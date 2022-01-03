@@ -25,7 +25,7 @@ impl<'a> RenderRect<'a>{
         >) -> Result<RenderRect, String> {
 
         let mut texture = creator
-            .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
+            .create_texture_target(PixelFormatEnum::RGBA8888, size[0], size[1])
             .map_err(|e| e.to_string())?;
 
         let rect = RenderRect {
@@ -65,18 +65,18 @@ fn screenBoundConstraint(rect: &mut PhysicsRect) {
     // just the bottom left is being processed for now
     let newPos = vecmath::vec2_add(rect.pos, rect.velocity);
 
-    let corners = [[newPos[0], newPos[1] + rect.size[1]]];
+    let corners = [[rect.pos[0], rect.pos[1] + rect.size[1]]];
 
     // find How much they are overlapping
-    let normal = [0.0, -1.0];
+    let normal = [0.0, 1.0];
     let radius = [0.5, 0.5];
 
-    let error = vecmath::vec2_dot(normal, vecmath::vec2_sub(corners[0], [0.0, 500.0]));
+    let error = vecmath::vec2_len(vecmath::vec2_scale(normal, 500.0 - corners[0][1]));
+
     if error < 0.0 {
-        println!("error of {}", error);
         let dError = vecmath::vec2_mul(rect.velocity, normal);
 
-        rect.velocity = vecmath::vec2_sub(rect.velocity, vecmath::vec2_scale(normal, error));
+        vecmath::vec2_sub(rect.velocity, vecmath::vec2_scale(normal, error));
     }
 }
 
@@ -137,7 +137,7 @@ fn main() -> Result<(), String> {
         mass: 1.0,
     };
 
-    let dt = 0.00001;
+    let dt = 0.001;
 
     'mainloop: loop {
         for event in sdl_context.event_pump()?.poll_iter() {
@@ -153,16 +153,13 @@ fn main() -> Result<(), String> {
         //rect.angle = (rect.angle + 0.5) % 360.;
 
         // apply gravity
-        pRect.velocity = vecmath::vec2_add(pRect.velocity, [0.0, 9.8 * dt]);
+        //vecmath::vec2_add(pRect.velocity, [0.0, 9.8 * dt]);
 
         // constrain velocity
-        screenBoundConstraint(&mut pRect);
-
-        // apply motion
-        pRect.pos = vecmath::vec2_add(pRect.pos, pRect.velocity);
+        //screenBoundConstraint(&mut pRect);
 
         // sync rects
-        syncRPRect(&mut rect, &pRect);
+        //syncRPRect(&mut rect, &pRect);
 
         clearScreen(&mut canvas);
         
