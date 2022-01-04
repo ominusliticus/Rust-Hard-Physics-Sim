@@ -25,7 +25,7 @@ impl<'a> RenderRect<'a>{
         >) -> Result<RenderRect, String> {
 
         let mut texture = creator
-            .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
+            .create_texture_target(PixelFormatEnum::RGBA8888, size[0], size[1])
             .map_err(|e| e.to_string())?;
 
         let rect = RenderRect {
@@ -49,7 +49,7 @@ struct PhysicsRect {
     size: vecmath::Vector2<f32>,
     velocity: vecmath::Vector2<f32>,
     angle: f64,
-    angularVelocity: vecmath::Vector2<f32>,
+    angularVelocity: f32,
     mass: f32,
 }
 
@@ -63,24 +63,48 @@ fn syncRPRect(render: &mut RenderRect, physics: &PhysicsRect) {
 fn screenBoundConstraint(rect: &mut PhysicsRect) {
     // apply for each corner of the square
     // just the bottom left is being processed for now
-    let newPos = vecmath::vec2_add(rect.pos, rect.velocity);
-
-    let corners = [[newPos[0], newPos[1] + rect.size[1]]];
+    let corners = [
+        [rect.pos[0], rect.pos[1] + rect.size[1]],
+        //[newPos[0] + rect.size[0], newPos[1] + rect.size[1]],
+    ];
 
     // find How much they are overlapping
     let normal = [0.0, -1.0];
     let radius = [0.5, 0.5];
 
-    let error = vecmath::vec2_dot(normal, vecmath::vec2_sub(corners[0], [0.0, 500.0]));
-    if error < 0.0 {
-        println!("error of {}", error);
-        let dError = vecmath::vec2_mul(rect.velocity, normal);
+    // calculate rotational inertia based on M(A^2 + B^2) / 12
+    let inertia = rect.mass * (rect.size[0] * rect.size[0] + rect.size[1] * rect.size[1]) / 12.0;
 
-        rect.velocity = vecmath::vec2_sub(rect.velocity, vecmath::vec2_scale(normal, error));
+    // current impulses
+    let mut impulse = [0.0, 0.0];
+    let mut angular_impulse = [0.0, 0.0];
+
+    for i in 0..10 {
+        for corner in corners {
+            let new_pos = vecmath::vec2_add(corner, vecmath::vec2_add(rect.velocity, impulse));
+
+            let error = vecmath::vec2_dot(normal, vecmath::vec2_sub(new_pos, [0.0, 600.0]));
+        
+            if error < 0.0 {
+                //println!("error of {}", error);
+
+                let c_d = vecmath::vec2_dot(vecmath::vec2_add(rect.velocity, vecmath::vec2_scale(radius, rect.angularVelocity)), normal);
+
+                let cross = vecmath::vec2_cross(radius, normal);
+                let m_eff = 1.0 / (rect.mass + inertia * cross * cross);
+
+                let lambda = -m_eff * c_d;
+
+                impulse = vecmath::vec2_add(impulse, vecmath::vec2_scale(normal, lambda));
+            }
+        }
     }
+
+    rect.velocity = vecmath::vec2_add(rect.velocity, impulse);
 }
 
 fn render_rect<'a> (color: Color, angle: f64, texture: &mut sdl2::render::Texture<'a>, canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, pos: vecmath::Vector2<i32>, size: vecmath::Vector2<u32>) {
+    canvas.set_draw_color(color);
     canvas
         .with_texture_canvas(texture, |texture_canvas| {
             texture_canvas.clear();
@@ -92,7 +116,6 @@ fn render_rect<'a> (color: Color, angle: f64, texture: &mut sdl2::render::Textur
         .map_err(|e| e.to_string());
 
     //println!("{} {} {} {}", pos[0], pos[1], size[0], size[1]);
-
         
     let dst = Some(Rect::new(pos[0], pos[1], size[0], size[1]));
     canvas.copy_ex(
@@ -127,13 +150,13 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
 
-    let mut rect = RenderRect::new([300, 200], [200, 200], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
+    let mut rect = RenderRect::new([350, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
     let mut pRect = PhysicsRect {
-        pos: [300.0, 200.0],
-        size: [200.0, 200.0],
+        pos: [350.0, 300.0],
+        size: [100.0, 100.0],
         velocity: [0.0, 0.0],
         angle: 0.0,
-        angularVelocity: [0.0, 0.0],
+        angularVelocity: 0.0,
         mass: 1.0,
     };
 
