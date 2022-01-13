@@ -1,6 +1,7 @@
 extern crate sdl2;
 extern crate vecmath;
 
+use std::cmp;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -107,6 +108,22 @@ fn print_vec2(vec: vecmath::Vector2<f32>) {
     println!("Vector: {}, {}", vec[0], vec[1]);
 }
 
+fn min(num1: f32, num2: f32) -> f32 {
+    if num1 < num2 {
+        return num1;
+    }
+
+    return num2;
+}
+
+fn max(num1: f32, num2: f32) -> f32 {
+    if num1 > num2 {
+        return num1;
+    }
+
+    return num2;
+}
+
 // apply the screen bound constraint on velocity
 fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
     // apply for each corner of the square
@@ -129,13 +146,16 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
         let mut temp_impulse = [0.0, 0.0];
         let mut temp_angular_impulse = 0.0;
 
-        for corner in corners {
-            let radius = vecmath::vec2_sub(corner, center);
+        let mut corner_count = 0;
 
+        for corner in corners {
             //println!("{} {}", radius[0], radius[1]);
 
             let mut new_pos = vecmath::vec2_add(corner, vecmath::vec2_scale(vecmath::vec2_add(rect.velocity, impulse), dt));
-            new_pos = rotate(new_pos, center, rect.angle + (rect.angularVelocity + angular_impulse) * (dt as f64));
+            let new_center = vecmath::vec2_add(center, vecmath::vec2_scale(vecmath::vec2_add(rect.velocity, impulse), dt));
+            new_pos = rotate(new_pos, new_center, rect.angle + (rect.angularVelocity + angular_impulse) * (dt as f64));
+
+            let radius = vecmath::vec2_sub(new_pos, new_center);
 
             let error = vecmath::vec2_dot(normal, vecmath::vec2_sub(new_pos, [new_pos[0], 6.0]));
             
@@ -145,7 +165,7 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
                 //println!("error of {}, {} {}, {} {}", error, new_pos[0], new_pos[1], new_copy[0], new_copy[1]);
 
                 // tangential velocity
-                let r_vec = vecmath::vec2_normalized(vecmath::vec2_sub(corner, center));
+                let r_vec = vecmath::vec2_normalized(vecmath::vec2_sub(new_pos, new_center));
                 let tan_vel = (vecmath::vec2_len(radius) * (rect.angularVelocity + angular_impulse) as f32);
                 let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
                 //let tan_cross = vecmath::vec2_cross(tan_vec, radius);
@@ -161,16 +181,18 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
                 let cross = vecmath::vec2_cross(radius, normal);
                 let m_eff = 1.0 / (rect.mass + inertia * cross * cross);
 
-                let lambda = -m_eff * c_d * rect.mass * 0.5;
+                let lambda = -m_eff * c_d;
 
-                println!("{}", m_eff);
+                //println!("{}", m_eff);
 
                 temp_impulse = vecmath::vec2_add(temp_impulse, vecmath::vec2_scale(normal, lambda));
                 temp_angular_impulse = temp_angular_impulse + (lambda * cross) as f64;
                 //temp_impulse = vecmath::vec2_add(temp_impulse, vecmath::vec2_scale(normal, lambda));
 
-                //println!("{} {} {}", i, error, temp_impulse[1]);
+                //println!("corner: {} error: {} angular velocity: {} angular impulse: {}", corner_count, error, rect.angularVelocity, temp_angular_impulse);
             }
+
+            corner_count = corner_count + 1;
         }
 
         // apply temp impulse to the main impulse
@@ -179,7 +201,7 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
     }
 
     if impulse[1] != 0.0 {
-        println!("velocity: {}, {} impulse: {}, {}", rect.velocity[0], rect.velocity[1], impulse[0], impulse[1]);
+        //println!("velocity: {}, {} impulse: {}, {}", rect.velocity[0], rect.velocity[1], impulse[0], impulse[1]);
     }
 
     rect.velocity = vecmath::vec2_add(rect.velocity, impulse);
@@ -241,11 +263,12 @@ fn main() -> Result<(), String> {
         velocity: [0.0, 0.0],
         angle: 1.41 / 2.0,
         //angle: 0.0,
+        //angle: 3.14159265358979 / 4.0,
         angularVelocity: 0.0,
         mass: 1.0,
     };
 
-    let dt = 0.0001;
+    let dt = 0.001;
 
     'mainloop: loop {
         for event in sdl_context.event_pump()?.poll_iter() {
