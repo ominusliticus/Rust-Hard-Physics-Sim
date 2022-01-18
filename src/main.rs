@@ -170,13 +170,14 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
                 let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
                 //let tan_cross = vecmath::vec2_cross(tan_vec, radius);
 
-                let c_d = vecmath::vec2_dot(vecmath::vec2_add(rect.velocity, tan_vec), normal);
+                let c_d = vecmath::vec2_dot(vecmath::vec2_sub(rect.velocity, tan_vec), normal);
 
-                //print_vec2(rect.velocity);
+                print_vec2(rect.velocity);
                 //print_vec2(tan_vec);
                 //println!("{}", rect.angularVelocity);
                 //println!("{}", tan_cross);
-                //println!("{}", c_d);
+                println!("{}", c_d);
+                println!("Corner: {}", corner_count);
 
                 let cross = vecmath::vec2_cross(radius, normal);
                 let m_eff = 1.0 / (rect.mass + inertia * cross * cross);
