@@ -54,6 +54,11 @@ struct PhysicsRect {
     mass: f32,
 }
 
+struct Impulse {
+    linear: vecmath::Vector2<f32>,
+    angular: f32,
+}
+
 fn vec2_mat2_mul(vec: vecmath::Vector2<f32>, mat: [vecmath::Vector2<f32>; 2]) -> vecmath::Vector2<f32> {
     let mut result = [0.0, 0.0];
 
@@ -122,6 +127,34 @@ fn max(num1: f32, num2: f32) -> f32 {
     }
 
     return num2;
+}
+
+fn applyNormalConstraint(pos, velocity, angular_velocity, radius, center, inertia, mass, normal: vecmath::Vector2) -> Impulse {
+    // tangential velocity
+    let r_vec = vecmath::vec2_normalized(vecmath::vec2_sub(pos, center));
+    let tan_vel = (vecmath::vec2_len(radius) * (angular_velocity) as f32);
+    let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
+    //let tan_cross = vecmath::vec2_cross(tan_vec, radius);
+
+    let c_d = vecmath::vec2_dot(vecmath::vec2_sub(velocity, tan_vec), normal);
+
+    //print_vec2(velocity);
+    //print_vec2(tan_vec);
+    //println!("{}", angular_velocity);
+    //println!("{}", tan_cross);
+    //println!("{}", c_d);
+
+    let cross = vecmath::vec2_cross(radius, normal);
+    let m_eff = 1.0 / (rect.mass + inertia * cross * cross);
+
+    let lambda = -m_eff * c_d;
+
+    //println!("{}", m_eff);
+
+    Impulse out {
+        linear: vecmath::vec2_add(temp_impulse, vecmath::vec2_scale(normal, lambda)),
+        angular: temp_angular_impulse + (lambda * cross);
+    }
 }
 
 // apply the screen bound constraint on velocity
