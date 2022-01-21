@@ -1,7 +1,6 @@
 extern crate sdl2;
 extern crate vecmath;
 
-use std::cmp;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -25,7 +24,7 @@ impl<'a> RenderRect<'a>{
         creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext
         >) -> Result<RenderRect, String> {
 
-        let mut texture = creator
+        let texture = creator
             .create_texture_target(PixelFormatEnum::RGBA8888, size[0], size[1])
             .map_err(|e| e.to_string())?;
 
@@ -50,7 +49,7 @@ struct PhysicsRect {
     size: vecmath::Vector2<f32>,
     velocity: vecmath::Vector2<f32>,
     angle: f32,
-    angularVelocity: f32,
+    angular_velocity: f32,
     mass: f32,
 }
 
@@ -81,7 +80,7 @@ fn rotate(point: vecmath::Vector2<f32>, origin: vecmath::Vector2<f32>, angle: f3
 }
 
 // top left, top right, bottom right, bottom left
-fn getCorners(rect: &PhysicsRect) -> [vecmath::Vector2<f32>; 4] {
+fn get_corners(rect: &PhysicsRect) -> [vecmath::Vector2<f32>; 4] {
     return [
         [rect.pos[0], rect.pos[1]],
         [rect.pos[0] + rect.size[0], rect.pos[1]],
@@ -91,8 +90,8 @@ fn getCorners(rect: &PhysicsRect) -> [vecmath::Vector2<f32>; 4] {
 }
 
 // Takes in the corners and then rotates them about a point known as the center of mass
-fn calcRotatedCorners(rect: &PhysicsRect, angle: f32, center: vecmath::Vector2<f32>) -> [vecmath::Vector2<f32>; 4] {
-    let mut corners = getCorners(rect);
+fn _calc_rotated_corners(rect: &PhysicsRect, angle: f32, center: vecmath::Vector2<f32>) -> [vecmath::Vector2<f32>; 4] {
+    let corners = get_corners(rect);
 
     let mut result = corners;
 
@@ -103,17 +102,17 @@ fn calcRotatedCorners(rect: &PhysicsRect, angle: f32, center: vecmath::Vector2<f
     return result;
 }
 
-fn syncRPRect(render: &mut RenderRect, physics: &PhysicsRect) {
+fn sync_rp_rect(render: &mut RenderRect, physics: &PhysicsRect) {
     render.pos = [(physics.pos[0] * 100.0) as i32, (physics.pos[1] * 100.0) as i32];
     render.size = [(physics.size[0] * 100.0) as u32, (physics.size[1] * 100.0) as u32];
     render.angle = physics.angle;
 }
 
-fn print_vec2(vec: vecmath::Vector2<f32>) {
+fn _print_vec2(vec: vecmath::Vector2<f32>) {
     println!("Vector: {}, {}", vec[0], vec[1]);
 }
 
-fn min(num1: f32, num2: f32) -> f32 {
+fn _min(num1: f32, num2: f32) -> f32 {
     if num1 < num2 {
         return num1;
     }
@@ -121,7 +120,7 @@ fn min(num1: f32, num2: f32) -> f32 {
     return num2;
 }
 
-fn max(num1: f32, num2: f32) -> f32 {
+fn _max(num1: f32, num2: f32) -> f32 {
     if num1 > num2 {
         return num1;
     }
@@ -129,7 +128,7 @@ fn max(num1: f32, num2: f32) -> f32 {
     return num2;
 }
 
-fn applyNormalConstraint(
+fn apply_normal_constraint(
     pos: vecmath::Vector2<f32>, 
     velocity: vecmath::Vector2<f32>, 
     angular_velocity: f32, 
@@ -141,7 +140,7 @@ fn applyNormalConstraint(
 
     // tangential velocity
     let r_vec = vecmath::vec2_normalized(vecmath::vec2_sub(pos, center));
-    let tan_vel = (vecmath::vec2_len(radius) * (angular_velocity) as f32);
+    let tan_vel = vecmath::vec2_len(radius) * angular_velocity;
     let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
     //let tan_cross = vecmath::vec2_cross(tan_vec, radius);
 
@@ -169,10 +168,10 @@ fn applyNormalConstraint(
 }
 
 // apply the screen bound constraint on velocity
-fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
+fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
     // apply for each corner of the square
     // just the bottom left is being processed for now
-    let corners = getCorners(&rect);
+    let corners = get_corners(&rect);
 
     let center = [rect.pos[0] + rect.size[0] / 2.0, rect.pos[1] + rect.size[1] / 2.0];
 
@@ -186,7 +185,7 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
     let mut impulse = [0.0, 0.0];
     let mut angular_impulse = 0.0;
 
-    for i in 0..1 {
+    for _i in 0..1 {
         let mut temp_impulse = [0.0, 0.0];
         let mut temp_angular_impulse = 0.0;
 
@@ -197,7 +196,7 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
 
             let mut new_pos = vecmath::vec2_add(corner, vecmath::vec2_scale(vecmath::vec2_add(rect.velocity, impulse), dt));
             let new_center = vecmath::vec2_add(center, vecmath::vec2_scale(vecmath::vec2_add(rect.velocity, impulse), dt));
-            new_pos = rotate(new_pos, new_center, rect.angle + (rect.angularVelocity + angular_impulse) * dt);
+            new_pos = rotate(new_pos, new_center, rect.angle + (rect.angular_velocity + angular_impulse) * dt);
 
             let radius = vecmath::vec2_sub(new_pos, new_center);
 
@@ -209,10 +208,10 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
                 //println!("error of {}, {} {}, {} {}", error, new_pos[0], new_pos[1], new_copy[0], new_copy[1]);
 
                 // Process the impulse calculation
-                let new_impulse = applyNormalConstraint(
+                let new_impulse = apply_normal_constraint(
                     new_pos, 
                     vecmath::vec2_add(rect.velocity, impulse), 
-                    rect.angularVelocity + angular_impulse, 
+                    rect.angular_velocity + angular_impulse, 
                     radius, 
                     new_center, 
                     inertia, 
@@ -239,7 +238,7 @@ fn screenBoundConstraint(rect: &mut PhysicsRect, dt: f32) {
     }
 
     rect.velocity = vecmath::vec2_add(rect.velocity, impulse);
-    rect.angularVelocity = rect.angularVelocity + angular_impulse;
+    rect.angular_velocity = rect.angular_velocity + angular_impulse;
     //println!("{}", angular_impulse);
 }
 
@@ -270,7 +269,7 @@ fn render_rect<'a> (color: Color, angle: f32, texture: &mut sdl2::render::Textur
     
 }
 
-fn clearScreen(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
+fn clear_screen(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
     canvas.set_draw_color(Color::RGBA(0, 0, 0, 255));
     canvas.clear();
 }
@@ -298,7 +297,7 @@ fn main() -> Result<(), String> {
         angle: 1.41 / 2.0,
         //angle: 0.0,
         //angle: 3.14159265358979 / 4.0,
-        angularVelocity: 0.0,
+        angular_velocity: 0.0,
         mass: 1.0,
     };
 
@@ -321,18 +320,18 @@ fn main() -> Result<(), String> {
         p_rect.velocity = vecmath::vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
 
         // constrain velocity
-        screenBoundConstraint(&mut p_rect, dt);
+        screen_bound_constraint(&mut p_rect, dt);
 
         // apply motion
         p_rect.pos = vecmath::vec2_add(p_rect.pos, vecmath::vec2_scale(p_rect.velocity, dt));
-        p_rect.angle = p_rect.angle + p_rect.angularVelocity * dt as f32;
+        p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
 
         //print_vec2(p_rect.pos);
 
         // sync rects
-        syncRPRect(&mut rect, &p_rect);
+        sync_rp_rect(&mut rect, &p_rect);
 
-        clearScreen(&mut canvas);
+        clear_screen(&mut canvas);
         
         rect.render(&mut canvas);
 
