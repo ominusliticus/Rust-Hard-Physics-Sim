@@ -44,6 +44,13 @@ impl<'a> RenderRect<'a>{
     }
 }
 
+#[derive(Copy, Clone)]
+struct Impulse {
+    linear: vecmath::Vector2<f32>,
+    angular: f32,
+}
+
+#[derive(Copy, Clone)]
 struct PhysicsRect {
     pos: vecmath::Vector2<f32>,
     size: vecmath::Vector2<f32>,
@@ -51,11 +58,66 @@ struct PhysicsRect {
     angle: f32,
     angular_velocity: f32,
     mass: f32,
+    // temp/status values
+    inertia: f32, // angular inertia constant
+    impulse: Impulse,
+    temp_impulse: Impulse,
 }
 
-struct Impulse {
-    linear: vecmath::Vector2<f32>,
-    angular: f32,
+impl PhysicsRect {
+    pub fn new(
+        pos: vecmath::Vector2<f32>,
+        size: vecmath::Vector2<f32>,
+        velocity: vecmath::Vector2<f32>,
+        angle: f32,
+        angular_velocity: f32,
+        mass: f32,
+        ) -> PhysicsRect {
+
+
+        let inertia = mass * (size[0] * size[0] + size[1] * size[1]) / 12.0;
+
+        let rect = PhysicsRect {
+            pos: pos,
+            size: size,
+            velocity: velocity,
+            angle: angle,
+            angular_velocity: angular_velocity,
+            mass: mass,
+            inertia: inertia,
+            impulse: Impulse {
+                linear: [0.0, 0.0],
+                angular: 0.0,
+            },
+            temp_impulse: Impulse {
+                linear: [0.0, 0.0],
+                angular: 0.0,
+            },
+        };
+
+        return rect;
+    }
+
+    pub fn reset_impulse(&mut self) {
+        self.impulse = Impulse {
+            linear: [0.0, 0.0],
+            angular: 0.0,
+        };
+    }
+
+    pub fn reset_temp_impulse(&mut self) {
+        self.temp_impulse = Impulse {
+            linear: [0.0, 0.0],
+            angular: 0.0,
+        };
+    }
+
+    pub fn get_impulse(&self) -> Impulse {
+        return Impulse {
+            linear: vecmath::vec2_add(self.impulse.linear, self.temp_impulse.linear),
+            angular: self.impulse.angular + self.temp_impulse.angular,
+        }
+    }
 }
 
 fn vec2_mat2_mul(vec: vecmath::Vector2<f32>, mat: [vecmath::Vector2<f32>; 2]) -> vecmath::Vector2<f32> {
@@ -133,7 +195,6 @@ fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect) -> [f
     let norm_line = vecmath::vec2_normalized(vecmath::vec2_sub(line[1], line[0]));
 
     let mut out = [0.0, 0.0, 0.0, 0.0];
-
     
     for i in 0..4 {
         // move all the corners into a normal position
@@ -149,10 +210,72 @@ fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect) -> [f
     return out;
 }
 
-fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect) -> bool {
-    
+fn find_max_f32(list: [f32; 4]) -> f32 {
+    let mut max = list[0];
 
-    return true;
+    for i in 1..4 {
+        if max < list[i] {
+            max = list[i];
+        }
+    }
+
+    return max;
+}
+
+fn find_min_f32(list: [f32; 4]) -> f32 {
+    let mut min = list[0];
+
+    for i in 1..4 {
+        if min > list[i] {
+            min = list[i];
+        }
+    }
+
+    return min;
+}
+
+// returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
+fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect) -> (bool, f32, [vecmath::Vector2<f32>; 2], vecmath::Vector2<f32>) {
+    let corners = get_corners(rect_a);
+
+    // Use rect A for axis
+    for i in 0..4 {
+        let axis = [corners[i], corners[(i + 1) % 4]];
+
+        let project_a = project_rect_line(axis, rect_a);
+        let project_b = project_rect_line(axis, rect_b);
+
+        // Find the intervals of both along the axis
+        let interval_a = [find_min_f32(project_a), find_max_f32(project_a)];
+        let interval_b = [find_min_f32(project_b), find_max_f32(project_b)];
+
+        // see if they overlap
+        if (interval_a[0] < interval_b[0] && interval_a[1] > interval_b[0]) ||
+           (interval_a[0] < interval_b[1] && interval_a[1] > interval_b[1]) {
+            // determine the exact side that is colliding (for normal)
+            // and the error
+            let mut side = 0.0; // default to neither side
+            let mut error = 0.0; // default to zero
+            if interval_a[1] < interval_b[1] { // right side collision (relative to axis)
+                side = 1.0;
+                error = interval_a[1] - interval_b[0];
+            }
+            if interval_a[0] > interval_b[0] { // left side collision (relative to axis)
+                side = -1.0;
+                error = interval_b[1] - interval_a[0];
+            }
+
+            // find normal
+            let normal = vecmath::vec2_scale(vecmath::vec2_normalized(vecmath::vec2_sub(corners[i], corners[(i + 1) % 4])), side);
+
+            let point = [[0.0, 0.0], [0.0, 0.0]];
+
+            // return result
+            return (true, error, point, normal);
+        }
+    }
+
+    return (false, 0.0, [[0.0, 0.0], [0.0, 0.0]], [0.0, 0.0]);
 }
 
 fn apply_normal_constraint(
@@ -192,6 +315,27 @@ fn apply_normal_constraint(
     };
 
     return out;
+}
+
+fn rect_constraint(rects: [&mut PhysicsRect; 10], size: usize, iter: usize) {
+    // rest all base impulses
+    for i in 0..size {
+        rects[i].reset_impulse();
+    }
+
+    for iter_count in 0..iter {
+        // reset all temp impulses
+        for i in 0..size {
+            rects[i].reset_temp_impulse();
+        }
+
+        // compare all rects with one another
+        for i in 0..size {
+            for j in 0..size {
+                
+            }
+        }
+    }
 }
 
 // apply the screen bound constraint on velocity
@@ -317,16 +461,16 @@ fn main() -> Result<(), String> {
     let creator = canvas.texture_creator();
 
     let mut rect = RenderRect::new([350, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
-    let mut p_rect = PhysicsRect {
-        pos: [3.5, 4.0],
-        size: [1.0, 1.0],
-        velocity: [0.0, 0.0],
-        angle: 1.41 / 2.0,
+    let mut p_rect = PhysicsRect::new (
+        [3.5, 4.0],
+        [1.0, 1.0],
+        [0.0, 0.0],
+        1.41 / 2.0,
         //angle: 0.0,
         //angle: 3.14159265358979 / 4.0,
-        angular_velocity: 0.0,
-        mass: 1.0,
-    };
+        0.0,
+        1.0,
+    );
 
     let dt = 0.002;
 
