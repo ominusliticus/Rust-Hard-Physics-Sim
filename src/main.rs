@@ -128,6 +128,33 @@ fn _max(num1: f32, num2: f32) -> f32 {
     return num2;
 }
 
+fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect) -> [f32; 4] {
+    let mut projection = get_corners(rect);
+    let norm_line = vecmath::vec2_normalized(vecmath::vec2_sub(line[1], line[0]));
+
+    let mut out = [0.0, 0.0, 0.0, 0.0];
+
+    
+    for i in 0..4 {
+        // move all the corners into a normal position
+        projection[i] = vecmath::vec2_sub(projection[i], line[0]);
+
+        // project the corners onto the line
+        projection[i] = vecmath::vec2_scale(norm_line, vecmath::vec2_dot(projection[i], norm_line));
+
+        // transform the projections onto a single axis
+        out[i] = (projection[i][0] * projection[i][0] + projection[i][1] * projection[i][1]).sqrt();
+    }
+
+    return out;
+}
+
+fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect) -> bool {
+    
+
+    return true;
+}
+
 fn apply_normal_constraint(
     pos: vecmath::Vector2<f32>, 
     velocity: vecmath::Vector2<f32>, 
