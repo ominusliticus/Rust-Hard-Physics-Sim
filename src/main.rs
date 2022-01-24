@@ -152,10 +152,12 @@ fn get_corners(rect: &PhysicsRect) -> [vecmath::Vector2<f32>; 4] {
 }
 
 // Takes in the corners and then rotates them about a point known as the center of mass
-fn _calc_rotated_corners(rect: &PhysicsRect, angle: f32, center: vecmath::Vector2<f32>) -> [vecmath::Vector2<f32>; 4] {
+fn calc_rotated_corners(rect: &PhysicsRect, angle: f32) -> [vecmath::Vector2<f32>; 4] {
     let corners = get_corners(rect);
 
     let mut result = corners;
+
+    let center = [rect.pos[0] + rect.size[0] / 2.0, rect.pos[1] + rect.size[1] / 2.0];
 
     for i in 0..corners.len() {
         result[i] = rotate(corners[i], center, angle);
@@ -164,13 +166,26 @@ fn _calc_rotated_corners(rect: &PhysicsRect, angle: f32, center: vecmath::Vector
     return result;
 }
 
+// calculated the corners of a rectangle given impulse and rotation
+fn calc_impulse_corners(rect: &PhysicsRect, dt: f32) -> [vecmath::Vector2<f32>; 4] {
+    let impulse = rect.impulse;
+
+    let mut corners = calc_rotated_corners(rect, rect.angle + rect.angular_velocity * impulse.angular * dt);
+
+    for i in 0..4 {
+        corners[i] = vecmath::vec2_add(corners[i], vecmath::vec2_scale(vecmath::vec2_mul(rect.velocity, impulse.linear), dt));
+    }
+
+    return corners;
+}
+
 fn sync_rp_rect(render: &mut RenderRect, physics: &PhysicsRect) {
     render.pos = [(physics.pos[0] * 100.0) as i32, (physics.pos[1] * 100.0) as i32];
     render.size = [(physics.size[0] * 100.0) as u32, (physics.size[1] * 100.0) as u32];
     render.angle = physics.angle;
 }
 
-fn _print_vec2(vec: vecmath::Vector2<f32>) {
+fn print_vec2(vec: vecmath::Vector2<f32>) {
     println!("Vector: {}, {}", vec[0], vec[1]);
 }
 
@@ -190,8 +205,8 @@ fn _max(num1: f32, num2: f32) -> f32 {
     return num2;
 }
 
-fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect) -> [f32; 4] {
-    let mut projection = get_corners(rect);
+fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect, dt: f32) -> [f32; 4] {
+    let mut projection = calc_impulse_corners(rect, dt);
     let norm_line = vecmath::vec2_normalized(vecmath::vec2_sub(line[1], line[0]));
 
     let mut out = [0.0, 0.0, 0.0, 0.0];
@@ -205,29 +220,35 @@ fn project_rect_line(line: [vecmath::Vector2<f32>; 2], rect: &PhysicsRect) -> [f
 
         // transform the projections onto a single axis
         out[i] = (projection[i][0] * projection[i][0] + projection[i][1] * projection[i][1]).sqrt();
+
+        // account for normal direction
+        let dot = vecmath::vec2_dot(projection[i], norm_line);
+        if dot < 0.0 {
+            out[i] = out[i] * -1.0;
+        }
     }
 
     return out;
 }
 
-fn find_max_f32(list: [f32; 4]) -> f32 {
-    let mut max = list[0];
+fn find_max_f32(list: [f32; 4]) -> usize {
+    let mut max = 0;
 
     for i in 1..4 {
-        if max < list[i] {
-            max = list[i];
+        if list[max] > list[i] {
+            max = i;
         }
     }
 
     return max;
 }
 
-fn find_min_f32(list: [f32; 4]) -> f32 {
-    let mut min = list[0];
+fn find_min_f32(list: [f32; 4]) -> usize {
+    let mut min = 0;
 
     for i in 1..4 {
-        if min > list[i] {
-            min = list[i];
+        if list[min] > list[i] {
+            min = i;
         }
     }
 
@@ -235,47 +256,61 @@ fn find_min_f32(list: [f32; 4]) -> f32 {
 }
 
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
-fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect) -> (bool, f32, [vecmath::Vector2<f32>; 2], vecmath::Vector2<f32>) {
-    let corners = get_corners(rect_a);
+fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, f32, vecmath::Vector2<f32>, vecmath::Vector2<f32>) {
+    let corners = calc_impulse_corners(rect_a, dt);
+    let corners_b = calc_impulse_corners(rect_b, dt);
 
     // Use rect A for axis
     for i in 0..4 {
         let axis = [corners[i], corners[(i + 1) % 4]];
 
-        let project_a = project_rect_line(axis, rect_a);
-        let project_b = project_rect_line(axis, rect_b);
+        let project_a = project_rect_line(axis, rect_a, dt);
+        let project_b = project_rect_line(axis, rect_b, dt);
 
         // Find the intervals of both along the axis
-        let interval_a = [find_min_f32(project_a), find_max_f32(project_a)];
-        let interval_b = [find_min_f32(project_b), find_max_f32(project_b)];
+        let interval_a_i = [find_min_f32(project_a), find_max_f32(project_a)];
+        let interval_b_i = [find_min_f32(project_b), find_max_f32(project_b)];
+        let interval_a = [project_a[interval_a_i[0]], project_a[interval_a_i[1]]];
+        let interval_b = [project_b[interval_b_i[0]], project_b[interval_b_i[1]]];
+
+        println!("{} {}", project_a[0], project_a[1]);
 
         // see if they overlap
-        if (interval_a[0] < interval_b[0] && interval_a[1] > interval_b[0]) ||
-           (interval_a[0] < interval_b[1] && interval_a[1] > interval_b[1]) {
-            // determine the exact side that is colliding (for normal)
-            // and the error
-            let mut side = 0.0; // default to neither side
-            let mut error = 0.0; // default to zero
-            if interval_a[1] < interval_b[1] { // right side collision (relative to axis)
-                side = 1.0;
-                error = interval_a[1] - interval_b[0];
+        if interval_a[0] < interval_b[0] && interval_a[1] > interval_b[0] {
+            // process secondary collision
+            let axis_b = [corners[(i + 1) % 4], corners[(i + 2) % 4]];
+
+            let project_a_b = project_rect_line(axis_b, rect_a, dt);
+            let project_b_b = project_rect_line(axis_b, rect_b, dt);
+
+            // Find the intervals of both along the axis
+            let interval_a_b_i = [find_min_f32(project_a_b), find_max_f32(project_a_b)];
+            let interval_b_b_i = [find_min_f32(project_b_b), find_max_f32(project_b_b)];
+            let interval_a_b = [project_a_b[interval_a_b_i[0]], project_a_b[interval_a_b_i[1]]];
+            let interval_b_b = [project_b_b[interval_b_b_i[0]], project_b_b[interval_b_b_i[1]]];
+
+            // see if they overlap
+            if interval_a_b[0] < interval_b_b[0] && interval_a_b[1] > interval_b_b[0] {
+                let error = interval_a[1] - interval_b[0]; // default to zero
+
+                // find normal
+                let normal = vecmath::vec2_normalized(vecmath::vec2_sub(corners[i], corners[(i + 1) % 4]));
+
+                let point = vecmath::vec2_add(
+                    vecmath::vec2_scale(vecmath::vec2_normalized(vecmath::vec2_sub(axis[1], axis[0])), rect_a.size[(i % 2) as usize]),
+                    vecmath::vec2_scale(vecmath::vec2_normalized(vecmath::vec2_sub(axis_b[1], axis_b[0])), 
+                    vecmath::vec2_len(vecmath::vec2_sub(corners_b[interval_b_i[0]], axis[1])))
+                );
+
+                // return result
+                return (true, error, point, normal);
             }
-            if interval_a[0] > interval_b[0] { // left side collision (relative to axis)
-                side = -1.0;
-                error = interval_b[1] - interval_a[0];
-            }
 
-            // find normal
-            let normal = vecmath::vec2_scale(vecmath::vec2_normalized(vecmath::vec2_sub(corners[i], corners[(i + 1) % 4])), side);
-
-            let point = [[0.0, 0.0], [0.0, 0.0]];
-
-            // return result
-            return (true, error, point, normal);
+            // do nothing since it is only one dimension
         }
     }
 
-    return (false, 0.0, [[0.0, 0.0], [0.0, 0.0]], [0.0, 0.0]);
+    return (false, 0.0, [0.0, 0.0], [0.0, 0.0]);
 }
 
 fn apply_normal_constraint(
@@ -460,14 +495,26 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
 
-    let mut rect = RenderRect::new([350, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
+    let mut rect = RenderRect::new([150, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
     let mut p_rect = PhysicsRect::new (
-        [3.5, 4.0],
+        [1.5, 4.0],
         [1.0, 1.0],
         [0.0, 0.0],
         1.41 / 2.0,
         //angle: 0.0,
         //angle: 3.14159265358979 / 4.0,
+        0.0,
+        1.0,
+    );
+
+    let mut rect_b = RenderRect::new([450, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
+    let mut p_rect_b = PhysicsRect::new (
+        [4.5, 4.0],
+        [1.0, 1.0],
+        [0.0, 0.0],
+        1.41 / 2.0,
+        //angle: 0.0,
+        //3.14159265358979 / 4.0,
         0.0,
         1.0,
     );
@@ -489,22 +536,42 @@ fn main() -> Result<(), String> {
 
         // apply gravity
         p_rect.velocity = vecmath::vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
+        p_rect_b.velocity = vecmath::vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
+
+        p_rect.velocity[0] = 0.1;
+        p_rect_b.velocity[0] = -0.1;
 
         // constrain velocity
         screen_bound_constraint(&mut p_rect, dt);
+        screen_bound_constraint(&mut p_rect_b, dt);
 
         // apply motion
         p_rect.pos = vecmath::vec2_add(p_rect.pos, vecmath::vec2_scale(p_rect.velocity, dt));
         p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
 
+        p_rect_b.pos = vecmath::vec2_add(p_rect_b.pos, vecmath::vec2_scale(p_rect_b.velocity, dt));
+        p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
+
         //print_vec2(p_rect.pos);
+
+        // set blue if collides
+        let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
+        if collided {
+            rect_b.color = Color::RGBA(0, 0, 255, 255);
+            println!("error: {}", error);
+        }
+        else {
+            rect_b.color = Color::RGBA(255, 0, 0, 255);
+        }
 
         // sync rects
         sync_rp_rect(&mut rect, &p_rect);
+        sync_rp_rect(&mut rect_b, &p_rect_b);
 
         clear_screen(&mut canvas);
         
         rect.render(&mut canvas);
+        rect_b.render(&mut canvas);
 
         canvas.present();
 
