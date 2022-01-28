@@ -538,7 +538,8 @@ fn main() -> Result<(), String> {
 
     let mut rect = RenderRect::new([150, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
     let mut p_rect = PhysicsRect::new (
-        [1.5, 4.0],
+        //[1.5, 4.0],
+        [1.0, 0.0],
         [1.0, 1.0],
         [0.0, 0.0],
         //1.41 / 2.0,
@@ -618,8 +619,6 @@ fn main() -> Result<(), String> {
         // End Mouse processing
         last_mouse_pos = mouse_pos;
 
-        //rect.angle = (rect.angle + 0.5) % 360.;
-
         // Apply Forces
         // p_rect_b.angle = p_rect_b.angle + 1.0 * dt;
 
@@ -646,7 +645,7 @@ fn main() -> Result<(), String> {
         //print_vec2(p_rect.pos);
 
         // set blue if collides
-        //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
+        println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
         if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
             let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
             let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
@@ -654,7 +653,7 @@ fn main() -> Result<(), String> {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
                 col_rect.pos = [(point[0] * 100.0) as i32, (point[1] * 100.0) as i32];
                 //println!("error: {}", error);
-
+        
             }
             else {
                 rect_b.color = Color::RGBA(0, 255, 0, 255);
