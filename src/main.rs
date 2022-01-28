@@ -340,11 +340,13 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
                 // find normal
                 let normal = vec2_normalized(vec2_sub(corners[i], corners[(i + 1) % 4]));
 
-                let point = vec2_add(
+                let mut point = vec2_add(vec2_add(
                     vec2_scale(vec2_normalized(vec2_sub(axis[1], axis[0])), rect_a.size[(i % 2) as usize]),
                     vec2_scale(vec2_normalized(vec2_sub(axis_b[1], axis_b[0])), 
                     vec2_len(vec2_sub(corners_b[interval_b_i[0]], axis[1])))
-                );
+                ), axis[0]);
+
+                point = corners_b[interval_b_i[0]];
 
                 // return result
                 return (true, error, point, normal);
@@ -540,8 +542,8 @@ fn main() -> Result<(), String> {
         [1.0, 1.0],
         [0.0, 0.0],
         //1.41 / 2.0,
-        //0.0,
-        3.14159265358979323846264338327950 / 4.0,
+        0.0,
+        //3.14159265358979323846264338327950 / 4.0,
         0.0,
         1.0,
     );
@@ -558,6 +560,8 @@ fn main() -> Result<(), String> {
         1.0,
     );
 
+    let mut col_rect = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
+
     let dt = 0.002;
 
     let mut last_mouse_pos = [0.0, 0.0];
@@ -571,6 +575,15 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {
                     repeat: false,
                     keycode: Some(Keycode::A),
+                    ..
+                } => {
+                    p_rect.angle = p_rect.angle + 3.141592653589792328 / 6.0;
+                }
+
+                // Key D
+                Event::KeyDown {
+                    repeat: false,
+                    keycode: Some(Keycode::D),
                     ..
                 } => {
                     p_rect_b.angle = p_rect_b.angle + 3.141592653589792328 / 6.0;
@@ -612,14 +625,14 @@ fn main() -> Result<(), String> {
 
         if !grabbed {
             // apply gravity
-            p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
+            //p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
             //p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
 
             //p_rect.velocity[0] = 0.1;
             //p_rect_b.velocity[0] = -0.1;
 
             // constrain velocity
-            screen_bound_constraint(&mut p_rect, dt);
+            //screen_bound_constraint(&mut p_rect, dt);
             //screen_bound_constraint(&mut p_rect_b, dt);
 
             // apply motion
@@ -636,8 +649,10 @@ fn main() -> Result<(), String> {
         //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
         if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
             let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
-            if collided {
+            let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
+            if collided && collided_b {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
+                col_rect.pos = [(point[0] * 100.0) as i32, (point[1] * 100.0) as i32];
                 //println!("error: {}", error);
 
             }
@@ -657,6 +672,7 @@ fn main() -> Result<(), String> {
         
         rect.render(&mut canvas);
         rect_b.render(&mut canvas);
+        col_rect.render(&mut canvas);
 
         canvas.present();
 
