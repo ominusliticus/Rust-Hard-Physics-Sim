@@ -111,6 +111,10 @@ impl PhysicsRect {
         return rect;
     }
 
+    pub fn move_p(&mut self, diff: Vector2<f32>) {
+        self.pos = vec2_add(self.pos, diff);
+    }
+
     pub fn reset_impulse(&mut self) {
         self.impulse = Impulse {
             linear: [0.0, 0.0],
@@ -313,7 +317,7 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
         let interval_a = [project_a[interval_a_i[0]], project_a[interval_a_i[1]]];
         let interval_b = [project_b[interval_b_i[0]], project_b[interval_b_i[1]]];
 
-        // println!("{} {}", project_a[0], project_a[1]);
+        //println!("{} {}", project_a[0], project_a[1]);
 
         // see if they overlap
         if interval_a[0] < interval_b[0] && interval_a[1] > interval_b[0] {
@@ -529,9 +533,6 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
 
-    // Setup Mouse
-    let mouse = MouseState::new(&sdl_context.event_pump().unwrap());
-
 
     let mut rect = RenderRect::new([150, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
     let mut p_rect = PhysicsRect::new (
@@ -550,18 +551,32 @@ fn main() -> Result<(), String> {
         [4.5, 4.0],
         [1.0, 1.0],
         [0.0, 0.0],
-        1.41 / 2.0,
-        //angle: 0.0,
-        //3.14159265358979 / 4.0,
+        //1.41 / 2.0,
+        0.0,
+        // 3.14159265358979 / 4.0,
         0.0,
         1.0,
     );
 
     let dt = 0.002;
 
+    let mut last_mouse_pos = [0.0, 0.0];
+
+    let mut grabbed = false;
+
     'mainloop: loop {
         for event in sdl_context.event_pump()?.poll_iter() {
             match event {
+                // Key A
+                Event::KeyDown {
+                    repeat: false,
+                    keycode: Some(Keycode::A),
+                    ..
+                } => {
+                    p_rect_b.angle = p_rect_b.angle + 3.141592653589792328 / 6.0;
+                }
+
+                // Exit
                 Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
@@ -571,33 +586,55 @@ fn main() -> Result<(), String> {
             }
         }
 
+        // Mouse Controls
+        let mouse = MouseState::new(&sdl_context.event_pump().unwrap());
+        let mouse_pos = [mouse.x() as f32, mouse.y() as f32];
         //println!("Mouse at x: {}, y: {}", mouse.x(), mouse.y());
+
+        // move rectangles
+        if mouse.left() && vec2_len(vec2_sub(p_rect.get_center(), vec2_scale(mouse_pos, 0.01))) < p_rect.size[0] / 2.0 {
+            //println!("Mouse at x: {}, y: {}", mouse.x(), mouse.y());
+            p_rect.move_p(vec2_scale(vec2_sub(mouse_pos, last_mouse_pos), 0.01));
+
+            grabbed = true;
+        }
+        else {
+            grabbed = false;
+        }
+
+        // End Mouse processing
+        last_mouse_pos = mouse_pos;
 
         //rect.angle = (rect.angle + 0.5) % 360.;
 
-        // apply gravity
-        p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
-        //p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
+        // Apply Forces
+        // p_rect_b.angle = p_rect_b.angle + 1.0 * dt;
 
-        //p_rect.velocity[0] = 0.1;
-        //p_rect_b.velocity[0] = -0.1;
+        if !grabbed {
+            // apply gravity
+            p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
+            //p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
 
-        // constrain velocity
-        screen_bound_constraint(&mut p_rect, dt);
-        //screen_bound_constraint(&mut p_rect_b, dt);
+            //p_rect.velocity[0] = 0.1;
+            //p_rect_b.velocity[0] = -0.1;
 
-        // apply motion
-        p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
-        p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
+            // constrain velocity
+            screen_bound_constraint(&mut p_rect, dt);
+            //screen_bound_constraint(&mut p_rect_b, dt);
 
-        p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
-        p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
+            // apply motion
+            p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
+            p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
+
+            p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
+            p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
+        }
 
         //print_vec2(p_rect.pos);
 
         // set blue if collides
         //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
-        if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 1.0) {
+        if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
             let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
             if collided {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
