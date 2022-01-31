@@ -319,9 +319,21 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
 
         //println!("{} {}", project_a[0], project_a[1]);
 
+        let mut point = 0.0;
+        let mut overlap = false;
+        // Case 1
+        if interval_a[0] < interval_b[0] && interval_b[0] < interval_a[1] {
+            overlap = true;
+            point = project_b[interval_b_i[0]];
+        }
+        // Case 2
+        if interval_a[0] < interval_b[1] && interval_b[1] < interval_a[1] {
+            overlap = true;
+            point = project_b[interval_b_i[1]];
+        }
+
         // see if they overlap
-        if (interval_a[0] < interval_b[0] && interval_b[0] < interval_a[1]) || 
-            (interval_a[0] < interval_b[1] && interval_b[1] < interval_a[1]) {
+        if overlap {
             // process secondary collision
             let axis_b = [corners[(i + 1) % 4], corners[(i + 2) % 4]];
 
@@ -334,9 +346,22 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
             let interval_a_b = [project_a_b[interval_a_b_i[0]], project_a_b[interval_a_b_i[1]]];
             let interval_b_b = [project_b_b[interval_b_b_i[0]], project_b_b[interval_b_b_i[1]]];
 
-            // see if they overlap
-            if (interval_a_b[0] < interval_b_b[0] && interval_b_b[0] < interval_a_b[1]) || 
-                (interval_a_b[0] < interval_b_b[1] && interval_b_b[1] < interval_a_b[1]) {
+            // see if they overlap and identify overlap point
+            // the overlap points must match for it to be colliding
+            let mut point_2 = 0.0;
+            let mut overlap_2 = false;
+            // Case 1
+            if interval_a_b[0] < interval_b_b[0] && interval_b_b[0] < interval_a_b[1] {
+                overlap_2 = true;
+                point_2 = project_b_b[interval_b_b_i[0]];
+            }
+            // Case 2
+            if interval_a_b[0] < interval_b_b[1] && interval_b_b[1] < interval_a_b[1] {
+                overlap_2 = true;
+                point_2 = project_b_b[interval_b_b_i[1]];
+            }
+
+            if overlap_2 && ((point-point_2) * (point-point_2) < 0.01 * 0.01) {
                 let error = interval_a[1] - interval_b[0]; // default to zero
 
                 // find normal
