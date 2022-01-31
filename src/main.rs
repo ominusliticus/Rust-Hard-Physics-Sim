@@ -320,7 +320,8 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
         //println!("{} {}", project_a[0], project_a[1]);
 
         // see if they overlap
-        if interval_a[0] < interval_b[0] && interval_a[1] > interval_b[0] {
+        if (interval_a[0] < interval_b[0] && interval_b[0] < interval_a[1]) || 
+            (interval_a[0] < interval_b[1] && interval_b[1] < interval_a[1]) {
             // process secondary collision
             let axis_b = [corners[(i + 1) % 4], corners[(i + 2) % 4]];
 
@@ -334,7 +335,8 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
             let interval_b_b = [project_b_b[interval_b_b_i[0]], project_b_b[interval_b_b_i[1]]];
 
             // see if they overlap
-            if interval_a_b[0] < interval_b_b[0] && interval_a_b[1] > interval_b_b[0] {
+            if (interval_a_b[0] < interval_b_b[0] && interval_b_b[0] < interval_a_b[1]) || 
+                (interval_a_b[0] < interval_b_b[1] && interval_b_b[1] < interval_a_b[1]) {
                 let error = interval_a[1] - interval_b[0]; // default to zero
 
                 // find normal
@@ -538,8 +540,7 @@ fn main() -> Result<(), String> {
 
     let mut rect = RenderRect::new([150, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
     let mut p_rect = PhysicsRect::new (
-        //[1.5, 4.0],
-        [1.0, 0.0],
+        [1.5, 4.0],
         [1.0, 1.0],
         [0.0, 0.0],
         //1.41 / 2.0,
@@ -645,15 +646,14 @@ fn main() -> Result<(), String> {
         //print_vec2(p_rect.pos);
 
         // set blue if collides
-        println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
+        //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
         if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
             let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
-            let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
-            if collided && collided_b {
+            //let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
+            if collided {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
                 col_rect.pos = [(point[0] * 100.0) as i32, (point[1] * 100.0) as i32];
                 //println!("error: {}", error);
-        
             }
             else {
                 rect_b.color = Color::RGBA(0, 255, 0, 255);
