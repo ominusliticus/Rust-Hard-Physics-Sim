@@ -311,25 +311,55 @@ fn checkAxisOverlap(line: [Vector2<f32>; 2], rect_a: &PhysicsRect, rect_b: &Phys
 
     //println!("{} {}", project_a[0], project_a[1]);
 
-    let mut point = 0.0;
     let mut overlap = false;
     // Case 1 (left overlap case)
     if interval_a[0] <= interval_b[0] && interval_b[0] <= interval_a[1] {
         overlap = true;
-        point = project_b[interval_b_i[0]];
     }
     // Case 2 (right overlap case)
     if interval_a[0] <= interval_b[1] && interval_b[1] <= interval_a[1] {
         overlap = true;
-        point = project_b[interval_b_i[1]];
     }
     // Case 3 (The max and min bound the entire side)
     if interval_a[0] >= interval_b[0] && interval_a[1] <= interval_b[1] {
         overlap = true;
-        point = project_b[interval_b_i[1]];
     }
 
     return overlap;
+}
+
+fn vec2_dist(vec1: Vector2<f32>, vec2: Vector2<f32>) -> f32 {
+    return vec2_len(vec2_sub(vec1, vec2));
+}
+
+fn abs(n: f32) -> f32 {
+    if n < 0.0 {
+        return n * -1.0;
+    }
+
+    return n;
+}
+
+fn find_normal_from_pos(rect: &PhysicsRect, pos: Vector2<f32>, dt: f32) -> Vector2<f32> {
+    let mut corners = rect.get_impulse_corners(dt);
+
+    // find the two corners that are closest to the point
+    // BUBBLE SORT!!!!
+    for i in 0..4 {
+        for j in 0..4 - 1 - i {
+            if vec2_dist(corners[j], pos) < vec2_dist(corners[j + 1], pos) {
+                corners.swap(j, j + 1);
+            }
+        }
+    }
+
+    // calculate the normal from the two corners
+    let line = vec2_normalized(vec2_sub(corners[0], corners[1]));
+    let normal = [-1.0 * line[1], line[0]];
+    let dot = vec2_dot(vec2_normalized(vec2_sub(pos, corners[0])), normal);
+
+    // scale the norm in the right direction
+    return vec2_scale(normal, dot / abs(dot));
 }
 
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
@@ -338,19 +368,59 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     let corners_b = rect_b.get_impulse_corners(dt);
 
     // process the overlap of all axis
-    let mut no_overlapse = [false, false, false, false];
-    no_overlapse[0] = checkAxisOverlap([corners[0], corners[1]], rect_a, rect_b, dt);
-    no_overlapse[1] = checkAxisOverlap([corners[1], corners[2]], rect_a, rect_b, dt);
-    no_overlapse[2] = checkAxisOverlap([corners_b[0], corners_b[1]], rect_b, rect_a, dt);
-    no_overlapse[3] = checkAxisOverlap([corners_b[1], corners_b[2]], rect_b, rect_a, dt);
+    let mut no_overlap = [false, false, false, false];
+    no_overlap[0] = checkAxisOverlap([corners[0], corners[1]], rect_a, rect_b, dt);
+    no_overlap[1] = checkAxisOverlap([corners[1], corners[2]], rect_a, rect_b, dt);
+    no_overlap[2] = checkAxisOverlap([corners_b[0], corners_b[1]], rect_b, rect_a, dt);
+    no_overlap[3] = checkAxisOverlap([corners_b[1], corners_b[2]], rect_b, rect_a, dt);
 
-    for overlap in no_overlapse {
+    // if there is no overlap then just return base info
+    for overlap in no_overlap {
         if !overlap {
             return (false, 0.0, [0.0, 0.0], [0.0, 0.0]);
         }
     }
 
-    return (true, 0.0, [0.0, 0.0], [0.0, 0.0]);
+    // Any code past this point assumes that the rectangles are overlapping
+
+    // calculate the contact points (Basic implementation that does not first put the contact point on the outside of the rect)
+    // identify the shortest length between the two rects to identify the normal rect (can be both if they are resting flat ontop of one another)
+    let mut shortest_length_a = vec2_len(vec2_sub(rect_a.get_impulse_center(dt), corners_b[0]));
+    let mut shortest_length_b = vec2_len(vec2_sub(rect_b.get_impulse_center(dt), corners[0]));
+    let mut shortest_corner_a = corners_b[0];
+    let mut shortest_corner_b = corners[0];
+
+    for i in 1..4 {
+        let mut length = vec2_len(vec2_sub(rect_a.get_impulse_center(dt), corners_b[i]));
+        if shortest_length_a > length {
+            shortest_length_a = length;
+            shortest_corner_a = corners_b[i];
+        }
+
+        length = vec2_len(vec2_sub(rect_b.get_impulse_center(dt), corners[i]));
+        if shortest_length_b > length {
+            shortest_length_b = length;
+            shortest_corner_b = corners[i];
+        }
+    }
+
+    // Compare the lengths
+    let mut normal = [0.0, 0.0];
+    let mut point = [0.0, 0.0];
+
+    // NOTE THAT THIS DOES NOT ACCOUNT FOR A MULTI-CONTACT COLLISION
+    // Rect A is norm and b-corner is the contact
+    if shortest_length_a <= shortest_length_b {
+        point = shortest_corner_b;
+        normal = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
+    }
+    // Rect B is norm and a-corner is the contact
+    else {
+        point = shortest_corner_a;
+        normal = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
+    }
+
+    return (true, 0.0, point, normal);
 }
 
 fn apply_normal_constraint(
