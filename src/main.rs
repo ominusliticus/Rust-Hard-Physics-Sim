@@ -299,91 +299,58 @@ fn find_min_f32(list: [f32; 4]) -> usize {
     return min;
 }
 
+fn checkAxisOverlap(line: [Vector2<f32>; 2], rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> bool {
+    let project_a = project_rect_line(line, rect_a, dt);
+    let project_b = project_rect_line(line, rect_b, dt);
+
+    // Find the intervals of both along the axis
+    let interval_a_i = [find_min_f32(project_a), find_max_f32(project_a)];
+    let interval_b_i = [find_min_f32(project_b), find_max_f32(project_b)];
+    let interval_a = [project_a[interval_a_i[0]], project_a[interval_a_i[1]]];
+    let interval_b = [project_b[interval_b_i[0]], project_b[interval_b_i[1]]];
+
+    //println!("{} {}", project_a[0], project_a[1]);
+
+    let mut point = 0.0;
+    let mut overlap = false;
+    // Case 1 (left overlap case)
+    if interval_a[0] <= interval_b[0] && interval_b[0] <= interval_a[1] {
+        overlap = true;
+        point = project_b[interval_b_i[0]];
+    }
+    // Case 2 (right overlap case)
+    if interval_a[0] <= interval_b[1] && interval_b[1] <= interval_a[1] {
+        overlap = true;
+        point = project_b[interval_b_i[1]];
+    }
+    // Case 3 (The max and min bound the entire side)
+    if interval_a[0] >= interval_b[0] && interval_a[1] <= interval_b[1] {
+        overlap = true;
+        point = project_b[interval_b_i[1]];
+    }
+
+    return overlap;
+}
+
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
 fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, f32, Vector2<f32>, Vector2<f32>) {
     let corners = rect_a.get_impulse_corners(dt);
     let corners_b = rect_b.get_impulse_corners(dt);
 
-    // Use rect A for axis
-    for i in 0..4 {
-        let axis = [corners[i], corners[(i + 1) % 4]];
+    // process the overlap of all axis
+    let mut no_overlapse = [false, false, false, false];
+    no_overlapse[0] = checkAxisOverlap([corners[0], corners[1]], rect_a, rect_b, dt);
+    no_overlapse[1] = checkAxisOverlap([corners[1], corners[2]], rect_a, rect_b, dt);
+    no_overlapse[2] = checkAxisOverlap([corners_b[0], corners_b[1]], rect_b, rect_a, dt);
+    no_overlapse[3] = checkAxisOverlap([corners_b[1], corners_b[2]], rect_b, rect_a, dt);
 
-        let project_a = project_rect_line(axis, rect_a, dt);
-        let project_b = project_rect_line(axis, rect_b, dt);
-
-        // Find the intervals of both along the axis
-        let interval_a_i = [find_min_f32(project_a), find_max_f32(project_a)];
-        let interval_b_i = [find_min_f32(project_b), find_max_f32(project_b)];
-        let interval_a = [project_a[interval_a_i[0]], project_a[interval_a_i[1]]];
-        let interval_b = [project_b[interval_b_i[0]], project_b[interval_b_i[1]]];
-
-        //println!("{} {}", project_a[0], project_a[1]);
-
-        let mut point = 0.0;
-        let mut overlap = false;
-        // Case 1
-        if interval_a[0] < interval_b[0] && interval_b[0] < interval_a[1] {
-            overlap = true;
-            point = project_b[interval_b_i[0]];
-        }
-        // Case 2
-        if interval_a[0] < interval_b[1] && interval_b[1] < interval_a[1] {
-            overlap = true;
-            point = project_b[interval_b_i[1]];
-        }
-
-        // see if they overlap
-        if overlap {
-            // process secondary collision
-            let axis_b = [corners[(i + 1) % 4], corners[(i + 2) % 4]];
-
-            let project_a_b = project_rect_line(axis_b, rect_a, dt);
-            let project_b_b = project_rect_line(axis_b, rect_b, dt);
-
-            // Find the intervals of both along the axis
-            let interval_a_b_i = [find_min_f32(project_a_b), find_max_f32(project_a_b)];
-            let interval_b_b_i = [find_min_f32(project_b_b), find_max_f32(project_b_b)];
-            let interval_a_b = [project_a_b[interval_a_b_i[0]], project_a_b[interval_a_b_i[1]]];
-            let interval_b_b = [project_b_b[interval_b_b_i[0]], project_b_b[interval_b_b_i[1]]];
-
-            // see if they overlap and identify overlap point
-            // the overlap points must match for it to be colliding
-            let mut point_2 = 0.0;
-            let mut overlap_2 = false;
-            // Case 1
-            if interval_a_b[0] < interval_b_b[0] && interval_b_b[0] < interval_a_b[1] {
-                overlap_2 = true;
-                point_2 = project_b_b[interval_b_b_i[0]];
-            }
-            // Case 2
-            if interval_a_b[0] < interval_b_b[1] && interval_b_b[1] < interval_a_b[1] {
-                overlap_2 = true;
-                point_2 = project_b_b[interval_b_b_i[1]];
-            }
-
-            if overlap_2 && ((point-point_2) * (point-point_2) < 0.01 * 0.01) {
-                let error = interval_a[1] - interval_b[0]; // default to zero
-
-                // find normal
-                let normal = vec2_normalized(vec2_sub(corners[i], corners[(i + 1) % 4]));
-
-                let mut point = vec2_add(vec2_add(
-                    vec2_scale(vec2_normalized(vec2_sub(axis[1], axis[0])), rect_a.size[(i % 2) as usize]),
-                    vec2_scale(vec2_normalized(vec2_sub(axis_b[1], axis_b[0])), 
-                    vec2_len(vec2_sub(corners_b[interval_b_i[0]], axis[1])))
-                ), axis[0]);
-
-                point = corners_b[interval_b_i[0]];
-
-                // return result
-                return (true, error, point, normal);
-            }
-
-            // do nothing since it is only one dimension
+    for overlap in no_overlapse {
+        if !overlap {
+            return (false, 0.0, [0.0, 0.0], [0.0, 0.0]);
         }
     }
 
-    return (false, 0.0, [0.0, 0.0], [0.0, 0.0]);
+    return (true, 0.0, [0.0, 0.0], [0.0, 0.0]);
 }
 
 fn apply_normal_constraint(
