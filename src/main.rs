@@ -363,7 +363,7 @@ fn find_normal_from_pos(rect: &PhysicsRect, pos: Vector2<f32>, dt: f32) -> Vecto
 }
 
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
-fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, f32, Vector2<f32>, Vector2<f32>) {
+fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, f32, [bool; 2], [Vector2<f32>; 2], [Vector2<f32>; 2]) {
     let corners = rect_a.get_impulse_corners(dt);
     let corners_b = rect_b.get_impulse_corners(dt);
 
@@ -377,7 +377,7 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     // if there is no overlap then just return base info
     for overlap in no_overlap {
         if !overlap {
-            return (false, 0.0, [0.0, 0.0], [0.0, 0.0]);
+            return (false, 0.0, [false, false], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]);
         }
     }
 
@@ -405,22 +405,37 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     }
 
     // Compare the lengths
-    let mut normal = [0.0, 0.0];
-    let mut point = [0.0, 0.0];
+    let mut normals = [[0.0, 0.0], [0.0, 0.0]];
+    let mut points = [[0.0, 0.0], [0.0, 0.0]];
+    let mut contacts = [false, false];
 
-    // NOTE THAT THIS DOES NOT ACCOUNT FOR A MULTI-CONTACT COLLISION
+    let min_dist = 0.001;
+
+    // Note: This accounts for multi-contact collisions
+    // Both collide
+    if abs(shortest_length_a - shortest_length_b) < 0.001 {
+        points[0] = shortest_corner_b;
+        normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
+        points[1] = shortest_corner_a;
+        normals[1] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
+        contacts[0] = true;
+        contacts[1] = true;
+    }
     // Rect A is norm and b-corner is the contact
-    if shortest_length_a <= shortest_length_b {
-        point = shortest_corner_b;
-        normal = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
+    else if shortest_length_a > shortest_length_b {
+        points[0] = shortest_corner_b;
+        normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
+        contacts[0] = true;
     }
     // Rect B is norm and a-corner is the contact
-    else {
-        point = shortest_corner_a;
-        normal = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
+    else if shortest_length_a < shortest_length_b {
+        points[1] = shortest_corner_a;
+        normals[1] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
+        contacts[1] = true;
     }
 
-    return (true, 0.0, point, normal);
+    // default error
+    return (true, -1.0, contacts, points, normals);
 }
 
 fn apply_normal_constraint(
@@ -459,18 +474,18 @@ fn apply_normal_constraint(
         angular: (lambda * cross),
     };
 
-    if (out.linear[1] > 0.0) {
+    if out.linear[1] > 0.0 {
         //println!("New: -------------- {}", lambda);
     }
 
-    if (out.angular != 0.0) {
+    if out.angular != 0.0 {
         //println!("Angular Impulse: {}", out.angular);
     }
 
     return out;
 }
 
-fn rect_constraint(rects: [&mut PhysicsRect; 10], size: usize, iter: usize) {
+fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f32) {
     // rest all base impulses
     for i in 0..size {
         rects[i].reset_impulse();
@@ -485,10 +500,57 @@ fn rect_constraint(rects: [&mut PhysicsRect; 10], size: usize, iter: usize) {
 
         // compare all rects with one another
         for i in 0..size {
-            for j in 0..size {
-                
+            for j in (i+1)..size {
+                let (collided, error, contacts, points, normals) = check_collision(&rects[i], &rects[j], dt);
+
+                if error < 0.0 {
+                    for c in 0..contacts.len() {
+                        if contacts[c as usize] {
+                            let radius_a = rects[i].get_impulse_radius(points[c as usize], dt);
+                            let center_a = rects[i].get_impulse_center(dt);
+                            let radius_b = rects[j].get_impulse_radius(points[c as usize], dt);
+                            let center_b = rects[j].get_impulse_center(dt);
+
+                            let new_impulse_a = apply_normal_constraint(
+                                points[c as usize], 
+                                rects[i].get_impulse_velocity(), 
+                                rects[i].angular_velocity + rects[i].impulse.angular, 
+                                radius_a, 
+                                center_a, 
+                                rects[i].inertia, 
+                                rects[i].mass, 
+                                normals[c as usize],
+                            );
+
+                            let new_impulse_b = apply_normal_constraint(
+                                points[c as usize], 
+                                rects[j].get_impulse_velocity(), 
+                                rects[j].angular_velocity + rects[j].impulse.angular, 
+                                radius_b, 
+                                center_b, 
+                                rects[j].inertia, 
+                                rects[j].mass, 
+                                normals[c as usize],
+                            );
+        
+                            rects[i].temp_impulse.add(new_impulse_a);
+                            rects[j].temp_impulse.add(new_impulse_b);
+                        }
+                    }
+                }
             }
         }
+
+        // apply temp impulse to the main impulse
+        for i in 0..size {
+            rects[i].impulse.add(rects[i].temp_impulse);
+        }
+    }
+
+    // apply impulse to velocity
+    for i in 0..size {
+        rects[i].velocity = rects[i].get_impulse_velocity();
+        rects[i].angular_velocity = rects[i].get_impulse_angular_velocity();
     }
 }
 
@@ -625,8 +687,9 @@ fn main() -> Result<(), String> {
     );
 
     let mut col_rect = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
+    let mut col_rect_b = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
 
-    let dt = 0.002;
+    let dt = 0.001;
 
     let mut last_mouse_pos = [0.0, 0.0];
 
@@ -687,15 +750,17 @@ fn main() -> Result<(), String> {
 
         if !grabbed {
             // apply gravity
-            //p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
-            //p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
+            p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
+            p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
 
             //p_rect.velocity[0] = 0.1;
             //p_rect_b.velocity[0] = -0.1;
 
             // constrain velocity
-            //screen_bound_constraint(&mut p_rect, dt);
-            //screen_bound_constraint(&mut p_rect_b, dt);
+            screen_bound_constraint(&mut p_rect, dt);
+            screen_bound_constraint(&mut p_rect_b, dt);
+
+            rect_constraint([&mut p_rect, &mut p_rect_b], 2, 1, dt);
 
             // apply motion
             p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
@@ -710,11 +775,12 @@ fn main() -> Result<(), String> {
         // set blue if collides
         //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
         if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
-            let (collided, error, point, normal) = check_collision(&p_rect, &p_rect_b, dt);
+            let (collided, error, contacts, points, normals) = check_collision(&p_rect, &p_rect_b, dt);
             //let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
             if collided {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
-                col_rect.pos = [(point[0] * 100.0) as i32, (point[1] * 100.0) as i32];
+                col_rect.pos = [(points[0][0] * 100.0) as i32, (points[0][1] * 100.0) as i32];
+                col_rect_b.pos = [(points[1][0] * 100.0) as i32, (points[1][1] * 100.0) as i32];
                 //println!("error: {}", error);
             }
             else {
@@ -734,6 +800,7 @@ fn main() -> Result<(), String> {
         rect.render(&mut canvas);
         rect_b.render(&mut canvas);
         col_rect.render(&mut canvas);
+        col_rect_b.render(&mut canvas);
 
         canvas.present();
 
