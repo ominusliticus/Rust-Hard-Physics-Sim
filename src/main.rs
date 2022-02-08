@@ -413,7 +413,7 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
 
     // Note: This accounts for multi-contact collisions
     // Both collide
-    if abs(shortest_length_a - shortest_length_b) < 0.001 {
+    if abs(shortest_length_a - shortest_length_b) < min_dist {
         points[0] = shortest_corner_b;
         normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
         points[1] = shortest_corner_a;
