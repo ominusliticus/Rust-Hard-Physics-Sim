@@ -249,6 +249,27 @@ fn _max(num1: f32, num2: f32) -> f32 {
     return num2;
 }
 
+fn project(pos: Vector2<f32>, line: [Vector2<f32>; 2]) -> f32 {
+    let norm_line = vec2_normalized(vec2_sub(line[1], line[0]));
+
+    // move point into a normal position
+    let mut proj = vec2_sub(pos, line[0]);
+
+    // project the point onto the line
+    proj = vec2_scale(norm_line, vec2_dot(proj, norm_line));
+
+    // transform the projections onto a single axis
+    let mut out = (proj[0] * proj[0] + proj[1] * proj[1]).sqrt();
+
+    // account for normal direction
+    let dot = vec2_dot(proj, norm_line);
+    if dot < 0.0 {
+        out = out * -1.0;
+    }
+
+    return out;
+}
+
 fn project_rect_line(line: [Vector2<f32>; 2], rect: &PhysicsRect, dt: f32) -> [f32; 4] {
     let mut projection = rect.get_impulse_corners(dt);
     let norm_line = vec2_normalized(vec2_sub(line[1], line[0]));
@@ -256,20 +277,7 @@ fn project_rect_line(line: [Vector2<f32>; 2], rect: &PhysicsRect, dt: f32) -> [f
     let mut out = [0.0, 0.0, 0.0, 0.0];
     
     for i in 0..4 {
-        // move all the corners into a normal position
-        projection[i] = vec2_sub(projection[i], line[0]);
-
-        // project the corners onto the line
-        projection[i] = vec2_scale(norm_line, vec2_dot(projection[i], norm_line));
-
-        // transform the projections onto a single axis
-        out[i] = (projection[i][0] * projection[i][0] + projection[i][1] * projection[i][1]).sqrt();
-
-        // account for normal direction
-        let dot = vec2_dot(projection[i], norm_line);
-        if dot < 0.0 {
-            out[i] = out[i] * -1.0;
-        }
+        out[i] = project(projection[i], line);
     }
 
     return out;
@@ -363,7 +371,7 @@ fn find_normal_from_pos(rect: &PhysicsRect, pos: Vector2<f32>, dt: f32) -> Vecto
 }
 
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
-fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, f32, [bool; 2], [Vector2<f32>; 2], [Vector2<f32>; 2]) {
+fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, [f32; 2], [bool; 2], [Vector2<f32>; 2], [Vector2<f32>; 2]) {
     let corners = rect_a.get_impulse_corners(dt);
     let corners_b = rect_b.get_impulse_corners(dt);
 
@@ -377,7 +385,7 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     // if there is no overlap then just return base info
     for overlap in no_overlap {
         if !overlap {
-            return (false, 0.0, [false, false], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]);
+            return (false, [0.0, 0.0], [false, false], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]);
         }
     }
 
@@ -405,6 +413,7 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     }
 
     // Compare the lengths
+    let mut error = [0.0, 0.0];
     let mut normals = [[0.0, 0.0], [0.0, 0.0]];
     let mut points = [[0.0, 0.0], [0.0, 0.0]];
     let mut contacts = [false, false];
@@ -412,30 +421,29 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     let min_dist = 0.001;
 
     // Note: This accounts for multi-contact collisions
-    // Both collide
-    if abs(shortest_length_a - shortest_length_b) < min_dist {
+    // Rect B is norm and a-corner is the contact
+    if shortest_length_a >= shortest_length_b {
         points[0] = shortest_corner_b;
         normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
-        points[1] = shortest_corner_a;
-        normals[1] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
         contacts[0] = true;
-        contacts[1] = true;
+
+        let p = vec2_add(rect_b.get_impulse_center(dt), vec2_mul(normals[0], vec2_scale(rect_a.size, 0.5)));
+        let line = [p, vec2_add(p, normals[0])];
+        error[0] = project(points[0], line);
     }
     // Rect A is norm and b-corner is the contact
-    else if shortest_length_a > shortest_length_b {
-        points[0] = shortest_corner_b;
-        normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
-        contacts[0] = true;
-    }
-    // Rect B is norm and a-corner is the contact
-    else if shortest_length_a < shortest_length_b {
+    if shortest_length_a <= shortest_length_b {
         points[1] = shortest_corner_a;
         normals[1] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
         contacts[1] = true;
+
+        let p = vec2_add(rect_a.get_impulse_center(dt), vec2_mul(normals[1], vec2_scale(rect_a.size, 0.5)));
+        let line = [p, vec2_add(p, normals[1])];
+        error[1] = project(points[1], line);
     }
 
     // default error
-    return (true, -1.0, contacts, points, normals);
+    return (true, error, contacts, points, normals);
 }
 
 fn apply_normal_constraint(
@@ -446,7 +454,11 @@ fn apply_normal_constraint(
     center: Vector2<f32>, 
     inertia: f32, 
     mass: f32, 
-    normal: Vector2<f32>) -> Impulse {
+    normal: Vector2<f32>,
+    error: f32,
+    bias: f32,
+    dt: f32,
+    ) -> Impulse {
 
     // tangential velocity
     let r_vec = vec2_normalized(vec2_sub(pos, center));
@@ -454,7 +466,8 @@ fn apply_normal_constraint(
     let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
     //let tan_cross = vec2_cross(tan_vec, radius);
 
-    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal);
+    // apply biased contact constraint
+    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) - bias*(error/dt);
 
     //print_vec2(velocity);
     //print_vec2(tan_vec);
@@ -486,6 +499,8 @@ fn apply_normal_constraint(
 }
 
 fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f32) {
+    let bias = 0.0001;
+
     // rest all base impulses
     for i in 0..size {
         rects[i].reset_impulse();
@@ -503,7 +518,7 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
             for j in (i+1)..size {
                 let (collided, error, contacts, points, normals) = check_collision(&rects[i], &rects[j], dt);
 
-                if error < 0.0 {
+                if collided {
                     for c in 0..contacts.len() {
                         if contacts[c as usize] {
                             let radius_a = rects[i].get_impulse_radius(points[c as usize], dt);
@@ -520,6 +535,9 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 rects[i].inertia, 
                                 rects[i].mass, 
                                 normals[c as usize],
+                                error[c],
+                                bias,
+                                dt,
                             );
 
                             let new_impulse_b = apply_normal_constraint(
@@ -531,6 +549,9 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 rects[j].inertia, 
                                 rects[j].mass, 
                                 normals[c as usize],
+                                error[c],
+                                bias,
+                                dt,
                             );
         
                             rects[i].temp_impulse.add(new_impulse_a);
@@ -592,6 +613,9 @@ fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
                     rect.inertia, 
                     rect.mass, 
                     normal,
+                    0.0,
+                    0.0,
+                    dt,
                 );
 
                 rect.temp_impulse.add(new_impulse);
@@ -766,8 +790,8 @@ fn main() -> Result<(), String> {
             p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
             p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
 
-            p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
-            p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
+            //p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
+            //p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
         }
 
         //print_vec2(p_rect.pos);
