@@ -5,10 +5,13 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 //use std::time::Duration;
-use sdl2::rect::{Point, Rect};
 use sdl2::mouse::MouseState;
+use sdl2::rect::{Point, Rect};
 
-use vecmath::{ Vector2, vec2_sub, vec2_add, vec2_cross, vec2_dot, vec2_len, vec2_mul, vec2_neg, vec2_normalized, vec2_scale };
+use vecmath::{
+    vec2_add, vec2_cross, vec2_dot, vec2_len, vec2_mul, vec2_neg, vec2_normalized, vec2_scale,
+    vec2_sub, Vector2,
+};
 
 struct RenderRect<'a> {
     pos: Vector2<i32>,
@@ -18,15 +21,14 @@ struct RenderRect<'a> {
     texture: sdl2::render::Texture<'a>,
 }
 
-impl<'a> RenderRect<'a>{
+impl<'a> RenderRect<'a> {
     pub fn new(
-        pos: Vector2<i32>, 
+        pos: Vector2<i32>,
         size: Vector2<u32>,
         angle: f32,
         color: Color,
-        creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext
-        >) -> Result<RenderRect, String> {
-
+        creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext>,
+    ) -> Result<RenderRect, String> {
         let texture = creator
             .create_texture_target(PixelFormatEnum::RGBA8888, size[0], size[1])
             .map_err(|e| e.to_string())?;
@@ -43,7 +45,14 @@ impl<'a> RenderRect<'a>{
     }
 
     pub fn render(&mut self, canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
-        render_rect(self.color, self.angle, &mut self.texture, canvas, self.pos, self.size);
+        render_rect(
+            self.color,
+            self.angle,
+            &mut self.texture,
+            canvas,
+            self.pos,
+            self.size,
+        );
     }
 }
 
@@ -85,9 +94,7 @@ impl PhysicsRect {
         angle: f32,
         angular_velocity: f32,
         mass: f32,
-        ) -> PhysicsRect {
-
-
+    ) -> PhysicsRect {
         let inertia = mass * (size[0] * size[0] + size[1] * size[1]) / 12.0;
 
         let rect = PhysicsRect {
@@ -133,7 +140,7 @@ impl PhysicsRect {
         return Impulse {
             linear: vec2_add(self.impulse.linear, self.temp_impulse.linear),
             angular: self.impulse.angular + self.temp_impulse.angular,
-        }
+        };
     }
 
     pub fn get_impulse_velocity(&self) -> Vector2<f32> {
@@ -149,11 +156,17 @@ impl PhysicsRect {
     }
 
     pub fn get_center(&self) -> Vector2<f32> {
-        return [self.pos[0] + self.size[0] / 2.0, self.pos[1] + self.size[1] / 2.0];
+        return [
+            self.pos[0] + self.size[0] / 2.0,
+            self.pos[1] + self.size[1] / 2.0,
+        ];
     }
 
     pub fn get_impulse_center(&self, dt: f32) -> Vector2<f32> {
-        return vec2_add(self.get_center(), vec2_scale(self.get_impulse_velocity(), dt));
+        return vec2_add(
+            self.get_center(),
+            vec2_scale(self.get_impulse_velocity(), dt),
+        );
     }
 
     pub fn get_impulse_radius(&self, pos: Vector2<f32>, dt: f32) -> Vector2<f32> {
@@ -177,7 +190,10 @@ impl PhysicsRect {
 
         let mut result = corners;
 
-        let center = [self.pos[0] + self.size[0] / 2.0, self.pos[1] + self.size[1] / 2.0];
+        let center = [
+            self.pos[0] + self.size[0] / 2.0,
+            self.pos[1] + self.size[1] / 2.0,
+        ];
 
         for i in 0..corners.len() {
             result[i] = rotate(corners[i], center, angle);
@@ -194,7 +210,10 @@ impl PhysicsRect {
         let center = self.get_impulse_center(dt);
 
         for i in 0..4 {
-            corners[i] = vec2_add(corners[i], vec2_scale(vec2_mul(self.velocity, self.impulse.linear), dt));
+            corners[i] = vec2_add(
+                corners[i],
+                vec2_scale(vec2_mul(self.velocity, self.impulse.linear), dt),
+            );
             corners[i] = rotate(corners[i], center, angle);
         }
 
@@ -224,8 +243,14 @@ fn rotate(point: Vector2<f32>, origin: Vector2<f32>, angle: f32) -> Vector2<f32>
 }
 
 fn sync_rp_rect(render: &mut RenderRect, physics: &PhysicsRect) {
-    render.pos = [(physics.pos[0] * 100.0) as i32, (physics.pos[1] * 100.0) as i32];
-    render.size = [(physics.size[0] * 100.0) as u32, (physics.size[1] * 100.0) as u32];
+    render.pos = [
+        (physics.pos[0] * 100.0) as i32,
+        (physics.pos[1] * 100.0) as i32,
+    ];
+    render.size = [
+        (physics.size[0] * 100.0) as u32,
+        (physics.size[1] * 100.0) as u32,
+    ];
     render.angle = physics.angle;
 }
 
@@ -275,7 +300,6 @@ fn project_rect_line(line: [Vector2<f32>; 2], rect: &PhysicsRect, dt: f32) -> [f
     let norm_line = vec2_normalized(vec2_sub(line[1], line[0]));
 
     let mut out = [0.0, 0.0, 0.0, 0.0];
-    
     for i in 0..4 {
         out[i] = project(projection[i], line);
     }
@@ -307,7 +331,12 @@ fn find_min_f32(list: [f32; 4]) -> usize {
     return min;
 }
 
-fn checkAxisOverlap(line: [Vector2<f32>; 2], rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> bool {
+fn checkAxisOverlap(
+    line: [Vector2<f32>; 2],
+    rect_a: &PhysicsRect,
+    rect_b: &PhysicsRect,
+    dt: f32,
+) -> bool {
     let project_a = project_rect_line(line, rect_a, dt);
     let project_b = project_rect_line(line, rect_b, dt);
 
@@ -371,7 +400,17 @@ fn find_normal_from_pos(rect: &PhysicsRect, pos: Vector2<f32>, dt: f32) -> Vecto
 }
 
 // returns (If the rects collided, pos error, coordinate of points of collision, normal vector according to rect A)
-fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool, [f32; 2], [bool; 2], [Vector2<f32>; 2], [Vector2<f32>; 2]) {
+fn check_collision(
+    rect_a: &PhysicsRect,
+    rect_b: &PhysicsRect,
+    dt: f32,
+) -> (
+    bool,
+    [f32; 2],
+    [bool; 2],
+    [Vector2<f32>; 2],
+    [Vector2<f32>; 2],
+) {
     let corners = rect_a.get_impulse_corners(dt);
     let corners_b = rect_b.get_impulse_corners(dt);
 
@@ -385,7 +424,13 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
     // if there is no overlap then just return base info
     for overlap in no_overlap {
         if !overlap {
-            return (false, [0.0, 0.0], [false, false], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]);
+            return (
+                false,
+                [0.0, 0.0],
+                [false, false],
+                [[0.0, 0.0], [0.0, 0.0]],
+                [[0.0, 0.0], [0.0, 0.0]],
+            );
         }
     }
 
@@ -422,22 +467,32 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
 
     // Note: This accounts for multi-contact collisions
     // Rect B is norm and a-corner is the contact
-    if shortest_length_a > shortest_length_b || abs(shortest_length_a-shortest_length_b) < min_dist {
+    if shortest_length_a > shortest_length_b
+        || abs(shortest_length_a - shortest_length_b) < min_dist
+    {
         points[0] = shortest_corner_b;
         normals[0] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
         contacts[0] = true;
 
-        let p = vec2_add(rect_b.get_impulse_center(dt), vec2_mul(normals[0], vec2_scale(rect_a.size, 0.5)));
+        let p = vec2_add(
+            rect_b.get_impulse_center(dt),
+            vec2_mul(normals[0], vec2_scale(rect_a.size, 0.5)),
+        );
         let line = [p, vec2_add(p, normals[0])];
         error[0] = project(points[0], line);
     }
     // Rect A is norm and b-corner is the contact
-    if shortest_length_a < shortest_length_b || abs(shortest_length_a-shortest_length_b) < min_dist {
+    if shortest_length_a < shortest_length_b
+        || abs(shortest_length_a - shortest_length_b) < min_dist
+    {
         points[1] = shortest_corner_a;
         normals[1] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
         contacts[1] = true;
 
-        let p = vec2_add(rect_a.get_impulse_center(dt), vec2_mul(normals[1], vec2_scale(rect_a.size, 0.5)));
+        let p = vec2_add(
+            rect_a.get_impulse_center(dt),
+            vec2_mul(normals[1], vec2_scale(rect_a.size, 0.5)),
+        );
         let line = [p, vec2_add(p, normals[1])];
         error[1] = project(points[1], line);
     }
@@ -447,19 +502,18 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
 }
 
 fn apply_normal_constraint(
-    pos: Vector2<f32>, 
-    velocity: Vector2<f32>, 
-    angular_velocity: f32, 
-    radius: Vector2<f32>, 
-    center: Vector2<f32>, 
-    inertia: f32, 
-    mass: f32, 
+    pos: Vector2<f32>,
+    velocity: Vector2<f32>,
+    angular_velocity: f32,
+    radius: Vector2<f32>,
+    center: Vector2<f32>,
+    inertia: f32,
+    mass: f32,
     normal: Vector2<f32>,
     error: f32,
     bias: f32,
     dt: f32,
-    ) -> Impulse {
-
+) -> Impulse {
     // tangential velocity
     let r_vec = vec2_normalized(vec2_sub(pos, center));
     let tan_vel = vec2_len(radius) * angular_velocity;
@@ -467,7 +521,7 @@ fn apply_normal_constraint(
     //let tan_cross = vec2_cross(tan_vec, radius);
 
     // apply biased contact constraint
-    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) + bias*(error/dt);
+    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) + bias * (error / dt);
 
     //print_vec2(velocity);
     //print_vec2(tan_vec);
@@ -495,6 +549,8 @@ fn apply_normal_constraint(
         //println!("Angular Impulse: {}", out.angular);
     }
 
+    out;
+
     return out;
 }
 
@@ -515,8 +571,9 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
 
         // compare all rects with one another
         for i in 0..size {
-            for j in (i+1)..size {
-                let (collided, error, contacts, points, normals) = check_collision(&rects[i], &rects[j], dt);
+            for j in (i + 1)..size {
+                let (collided, error, contacts, points, normals) =
+                    check_collision(&rects[i], &rects[j], dt);
 
                 if collided {
                     for c in 0..contacts.len() {
@@ -539,13 +596,13 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
 
                             // find impulses
                             let new_impulse_a = apply_normal_constraint(
-                                points[c as usize], 
-                                rects[i].get_impulse_velocity(), 
-                                rects[i].angular_velocity + rects[i].impulse.angular, 
-                                radius_a, 
-                                center_a, 
-                                rects[i].inertia, 
-                                rects[i].mass, 
+                                points[c as usize],
+                                rects[i].get_impulse_velocity(),
+                                rects[i].angular_velocity + rects[i].impulse.angular,
+                                radius_a,
+                                center_a,
+                                rects[i].inertia,
+                                rects[i].mass,
                                 normal_a,
                                 error[c],
                                 bias,
@@ -553,19 +610,19 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                             );
 
                             let new_impulse_b = apply_normal_constraint(
-                                points[c as usize], 
-                                rects[j].get_impulse_velocity(), 
-                                rects[j].angular_velocity + rects[j].impulse.angular, 
-                                radius_b, 
-                                center_b, 
-                                rects[j].inertia, 
-                                rects[j].mass, 
+                                points[c as usize],
+                                rects[j].get_impulse_velocity(),
+                                rects[j].angular_velocity + rects[j].impulse.angular,
+                                radius_b,
+                                center_b,
+                                rects[j].inertia,
+                                rects[j].mass,
                                 normal_b,
                                 error[c],
                                 bias,
                                 dt,
                             );
-        
+
                             rects[i].temp_impulse.add(new_impulse_a);
                             rects[j].temp_impulse.add(new_impulse_b);
                         }
@@ -582,6 +639,9 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
 
     // apply impulse to velocity
     for i in 0..size {
+        if (vec2_len(rects[i].impulse.linear) > 0.0) {
+            rects[i].velocity;
+        }
         rects[i].velocity = rects[i].get_impulse_velocity();
         rects[i].angular_velocity = rects[i].get_impulse_angular_velocity();
     }
@@ -590,56 +650,73 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
 // apply the screen bound constraint on velocity
 fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
     // find How much they are overlapping
-    let normal = [0.0, -1.0];
+    let normals = [
+        [0.0, -1.0],
+        [-1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],
+    ];
+
+    let walls = [
+        6.0,
+        8.0,
+        0.0,
+        0.0,
+    ];
 
     rect.reset_impulse();
 
-    for i in 0..1 {
-        // apply for each corner of the square
-        rect.reset_temp_impulse();
+    for s in 0..4 {
+        for i in 0..1 {
+            // apply for each corner of the square
+            rect.reset_temp_impulse();
 
-        let corners = rect.get_impulse_corners(dt);
+            let corners = rect.get_impulse_corners(dt);
 
-        let center = rect.get_impulse_center(dt);
+            let center = rect.get_impulse_center(dt);
 
-        let mut corner_count = 0;
+            let mut corner_count = 0;
 
-        for corner in corners {
-            //println!("{} {}", radius[0], radius[1]);
-            let radius = rect.get_impulse_radius(corner, dt);
+            for corner in corners {
+                //println!("{} {}", radius[0], radius[1]);
+                let radius = rect.get_impulse_radius(corner, dt);
 
-            let error = vec2_dot(normal, vec2_sub(corner, [corner[0], 6.0]));
-            
-            //println!("error of {}, {} {}, {} {}", error, new_pos[0], new_pos[1], new_copy[0], new_copy[1]);
-            
-            if error < 0.0 {
+                // set surface
+                let surface = vec2_add(vec2_scale(normals[s], -walls[s]), [corner[0] * ((1.0 + (s as f32)) % 2.0), corner[1] * ((s as f32) % 2.0)]);
+
+
+                let error = vec2_dot(normals[s], vec2_sub(corner, surface));
                 //println!("error of {}, {} {}, {} {}", error, new_pos[0], new_pos[1], new_copy[0], new_copy[1]);
 
-                // Process the impulse calculation
-                let new_impulse = apply_normal_constraint(
-                    corner, 
-                    rect.get_impulse_velocity(), 
-                    rect.angular_velocity + rect.impulse.angular, 
-                    radius, 
-                    center, 
-                    rect.inertia, 
-                    rect.mass, 
-                    normal,
-                    0.0,
-                    0.0,
-                    dt,
-                );
+                if error < 0.0 {
+                    //println!("error of {}, {} {}, {} {}", error, new_pos[0], new_pos[1], new_copy[0], new_copy[1]);
 
-                rect.temp_impulse.add(new_impulse);
+                    // Process the impulse calculation
+                    let new_impulse = apply_normal_constraint(
+                        corner,
+                        rect.get_impulse_velocity(),
+                        rect.angular_velocity + rect.impulse.angular,
+                        radius,
+                        center,
+                        rect.inertia,
+                        rect.mass,
+                        normals[s],
+                        0.0,
+                        0.0,
+                        dt,
+                    );
 
-                //println!("corner: {} error: {} angular velocity: {} angular impulse: {}", corner_count, error, rect.angularVelocity, temp_angular_impulse);
+                    rect.temp_impulse.add(new_impulse);
+
+                    //println!("corner: {} error: {} angular velocity: {} angular impulse: {}", corner_count, error, rect.angularVelocity, temp_angular_impulse);
+                }
+
+                corner_count = corner_count + 1;
             }
 
-            corner_count = corner_count + 1;
+            // apply temp impulse to the main impulse
+            rect.impulse.add(rect.temp_impulse);
         }
-
-        // apply temp impulse to the main impulse
-        rect.impulse.add(rect.temp_impulse);
     }
 
     if rect.impulse.linear[1] != 0.0 {
@@ -650,7 +727,14 @@ fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
     rect.angular_velocity = rect.get_impulse_angular_velocity();
 }
 
-fn render_rect<'a> (color: Color, angle: f32, texture: &mut sdl2::render::Texture<'a>, canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, pos: Vector2<i32>, size: Vector2<u32>) {
+fn render_rect<'a>(
+    color: Color,
+    angle: f32,
+    texture: &mut sdl2::render::Texture<'a>,
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    pos: Vector2<i32>,
+    size: Vector2<u32>,
+) {
     canvas.set_draw_color(color);
     canvas
         .with_texture_canvas(texture, |texture_canvas| {
@@ -663,7 +747,6 @@ fn render_rect<'a> (color: Color, angle: f32, texture: &mut sdl2::render::Textur
         .map_err(|e| e.to_string());
 
     //println!("{} {} {} {}", pos[0], pos[1], size[0], size[1]);
-        
     let dst = Some(Rect::new(pos[0], pos[1], size[0], size[1]));
     canvas.copy_ex(
         &texture,
@@ -674,7 +757,6 @@ fn render_rect<'a> (color: Color, angle: f32, texture: &mut sdl2::render::Textur
         false,
         false,
     );
-    
 }
 
 fn clear_screen(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
@@ -697,9 +779,15 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
 
-
-    let mut rect = RenderRect::new([150, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
-    let mut p_rect = PhysicsRect::new (
+    let mut rect = RenderRect::new(
+        [150, 300],
+        [100, 100],
+        0.0,
+        Color::RGBA(255, 0, 0, 255),
+        &creator,
+    )
+    .unwrap();
+    let mut p_rect = PhysicsRect::new(
         [1.5, 4.0],
         [1.0, 1.0],
         [0.0, 0.0],
@@ -710,8 +798,15 @@ fn main() -> Result<(), String> {
         1.0,
     );
 
-    let mut rect_b = RenderRect::new([450, 300], [100, 100], 0.0, Color::RGBA(255, 0, 0, 255), &creator).unwrap();
-    let mut p_rect_b = PhysicsRect::new (
+    let mut rect_b = RenderRect::new(
+        [450, 300],
+        [100, 100],
+        0.0,
+        Color::RGBA(255, 0, 0, 255),
+        &creator,
+    )
+    .unwrap();
+    let mut p_rect_b = PhysicsRect::new(
         [4.5, 4.0],
         [1.0, 1.0],
         [0.0, 0.0],
@@ -723,17 +818,41 @@ fn main() -> Result<(), String> {
     );
 
     // Normal marker line
-    let mut norm_rect = RenderRect::new([50, 50], [3, 100], 3.1415926, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
+    let mut norm_rect = RenderRect::new(
+        [50, 50],
+        [3, 100],
+        3.1415926,
+        Color::RGBA(255, 255, 255, 255),
+        &creator,
+    )
+    .unwrap();
 
     // white collision dots
-    let mut col_rect = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
-    let mut col_rect_b = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
+    let mut col_rect = RenderRect::new(
+        [0, 0],
+        [3, 3],
+        0.0,
+        Color::RGBA(255, 255, 255, 255),
+        &creator,
+    )
+    .unwrap();
+    let mut col_rect_b = RenderRect::new(
+        [0, 0],
+        [3, 3],
+        0.0,
+        Color::RGBA(255, 255, 255, 255),
+        &creator,
+    )
+    .unwrap();
 
     let dt = 0.001;
 
     let mut last_mouse_pos = [0.0, 0.0];
+    let mut mouse_velocity = [0.0, 0.0];
+    let mouse_velocity_decay = 0.8;
 
-    let mut grabbed = false;
+    let mut grabbed_a = false;
+    let mut grabbed_b = false;
 
     'mainloop: loop {
         for event in sdl_context.event_pump()?.poll_iter() {
@@ -784,14 +903,41 @@ fn main() -> Result<(), String> {
         //println!("Mouse at x: {}, y: {}", mouse.x(), mouse.y());
 
         // move rectangles
-        if mouse.left() && vec2_len(vec2_sub(p_rect.get_center(), vec2_scale(mouse_pos, 0.01))) < p_rect.size[0] / 2.0 {
+        if mouse.left() || mouse.right() {
+            mouse_velocity = vec2_scale(mouse_velocity, mouse_velocity_decay);
+            mouse_velocity = vec2_add(vec2_scale(vec2_sub(mouse_pos, last_mouse_pos), 1.0 - mouse_velocity_decay), mouse_velocity);
+        }
+
+        // p_rect_a
+        if mouse.left()
+            && vec2_len(vec2_sub(p_rect.get_center(), vec2_scale(mouse_pos, 0.01)))
+                < p_rect.size[0] / 2.0
+        {
             //println!("Mouse at x: {}, y: {}", mouse.x(), mouse.y());
             p_rect.move_p(vec2_scale(vec2_sub(mouse_pos, last_mouse_pos), 0.01));
 
-            grabbed = true;
+            grabbed_a = true;
+        } 
+        // set false and give speed
+        else if grabbed_a {
+            p_rect.velocity = vec2_scale(mouse_velocity, 0.01 * (1.0/dt));
+            grabbed_a = false;
         }
-        else {
-            grabbed = false;
+
+        // p_rect_b
+        if mouse.right()
+            && vec2_len(vec2_sub(p_rect_b.get_center(), vec2_scale(mouse_pos, 0.01)))
+                < p_rect_b.size[0] / 2.0
+        {
+            //println!("Mouse at x: {}, y: {}", mouse.x(), mouse.y());
+            p_rect_b.move_p(vec2_scale(vec2_sub(mouse_pos, last_mouse_pos), 0.01));
+
+            grabbed_b = true;
+        } 
+        // set false and give speed
+        else if grabbed_b {
+            p_rect_b.velocity = vec2_scale(mouse_velocity, 0.01 * (1.0/dt));
+            grabbed_b = false;
         }
 
         // End Mouse processing
@@ -800,7 +946,7 @@ fn main() -> Result<(), String> {
         // Apply Forces
         // p_rect_b.angle = p_rect_b.angle + 1.0 * dt;
 
-        if !grabbed {
+        if !(grabbed_a || grabbed_b) {
             // apply gravity
             p_rect.velocity = vec2_add(p_rect.velocity, [0.0, 9.8 * dt]);
             p_rect_b.velocity = vec2_add(p_rect_b.velocity, [0.0, 9.8 * dt]);
@@ -818,8 +964,8 @@ fn main() -> Result<(), String> {
             p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
             p_rect.angle = p_rect.angle + p_rect.angular_velocity * dt as f32;
 
-            //p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
-            //p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
+            p_rect_b.pos = vec2_add(p_rect_b.pos, vec2_scale(p_rect_b.velocity, dt));
+            p_rect_b.angle = p_rect_b.angle + p_rect_b.angular_velocity * dt as f32;
         }
 
         //print_vec2(p_rect.pos);
@@ -827,7 +973,8 @@ fn main() -> Result<(), String> {
         // set blue if collides
         //println!("{}", vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)));
         if (vec2_len(vec2_sub(p_rect.pos, p_rect_b.pos)) < 10.0) {
-            let (collided, error, contacts, points, normals) = check_collision(&p_rect, &p_rect_b, dt);
+            let (collided, error, contacts, points, normals) =
+                check_collision(&p_rect, &p_rect_b, dt);
             //let (collided_b, erro_b, point_b, normal_b) = check_collision(&p_rect_b, &p_rect, dt);
             if collided {
                 rect_b.color = Color::RGBA(0, 0, 255, 255);
@@ -836,12 +983,10 @@ fn main() -> Result<(), String> {
                 //println!("error: {}", error);
 
                 norm_rect.angle = normals[0][1].atan2(normals[0][0]) + 3.1415926 / 2.0;
-            }
-            else {
+            } else {
                 rect_b.color = Color::RGBA(0, 255, 0, 255);
             }
-        }
-        else {
+        } else {
             rect_b.color = Color::RGBA(255, 0, 0, 255);
         }
 
@@ -850,7 +995,6 @@ fn main() -> Result<(), String> {
         sync_rp_rect(&mut rect_b, &p_rect_b);
 
         clear_screen(&mut canvas);
-        
         rect.render(&mut canvas);
         rect_b.render(&mut canvas);
 
@@ -864,7 +1008,6 @@ fn main() -> Result<(), String> {
         // Normalize the loop speed (Count how long has passed for computation and then sleep the rest of the time per frame)
         // Delay Creation tool
         //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-
     }
 
     Ok(())
