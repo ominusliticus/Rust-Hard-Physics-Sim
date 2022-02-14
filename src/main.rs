@@ -422,9 +422,9 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
 
     // Note: This accounts for multi-contact collisions
     // Rect B is norm and a-corner is the contact
-    if shortest_length_a >= shortest_length_b {
+    if shortest_length_a > shortest_length_b || abs(shortest_length_a-shortest_length_b) < min_dist {
         points[0] = shortest_corner_b;
-        normals[0] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
+        normals[0] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
         contacts[0] = true;
 
         let p = vec2_add(rect_b.get_impulse_center(dt), vec2_mul(normals[0], vec2_scale(rect_a.size, 0.5)));
@@ -432,9 +432,9 @@ fn check_collision(rect_a: &PhysicsRect, rect_b: &PhysicsRect, dt: f32) -> (bool
         error[0] = project(points[0], line);
     }
     // Rect A is norm and b-corner is the contact
-    if shortest_length_a <= shortest_length_b {
+    if shortest_length_a < shortest_length_b || abs(shortest_length_a-shortest_length_b) < min_dist {
         points[1] = shortest_corner_a;
-        normals[1] = find_normal_from_pos(rect_b, rect_a.get_impulse_center(dt), dt);
+        normals[1] = find_normal_from_pos(rect_a, rect_b.get_impulse_center(dt), dt);
         contacts[1] = true;
 
         let p = vec2_add(rect_a.get_impulse_center(dt), vec2_mul(normals[1], vec2_scale(rect_a.size, 0.5)));
@@ -467,7 +467,7 @@ fn apply_normal_constraint(
     //let tan_cross = vec2_cross(tan_vec, radius);
 
     // apply biased contact constraint
-    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) - bias*(error/dt);
+    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) + bias*(error/dt);
 
     //print_vec2(velocity);
     //print_vec2(tan_vec);
@@ -499,7 +499,7 @@ fn apply_normal_constraint(
 }
 
 fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f32) {
-    let bias = 0.0001;
+    let bias = 0.0;
 
     // rest all base impulses
     for i in 0..size {
@@ -526,6 +526,18 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                             let radius_b = rects[j].get_impulse_radius(points[c as usize], dt);
                             let center_b = rects[j].get_impulse_center(dt);
 
+                            let mut normal_a = normals[c as usize];
+                            let mut normal_b = normals[c as usize];
+
+                            // flip the normals for corresponding rects
+                            //if c == 0 {
+                            //    normal_b = vec2_scale(normal_b, -1.0);
+                            //}
+                            //else if c == 1 {
+                            //    normal_a = vec2_scale(normal_a, -1.0);
+                            //}
+
+                            // find impulses
                             let new_impulse_a = apply_normal_constraint(
                                 points[c as usize], 
                                 rects[i].get_impulse_velocity(), 
@@ -534,7 +546,7 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 center_a, 
                                 rects[i].inertia, 
                                 rects[i].mass, 
-                                normals[c as usize],
+                                normal_a,
                                 error[c],
                                 bias,
                                 dt,
@@ -548,7 +560,7 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 center_b, 
                                 rects[j].inertia, 
                                 rects[j].mass, 
-                                normals[c as usize],
+                                normal_b,
                                 error[c],
                                 bias,
                                 dt,
@@ -710,6 +722,10 @@ fn main() -> Result<(), String> {
         1.0,
     );
 
+    // Normal marker line
+    let mut norm_rect = RenderRect::new([50, 50], [3, 100], 3.1415926, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
+
+    // white collision dots
     let mut col_rect = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
     let mut col_rect_b = RenderRect::new([0, 0], [3, 3], 0.0, Color::RGBA(255, 255, 255, 255), &creator).unwrap();
 
@@ -738,6 +754,18 @@ fn main() -> Result<(), String> {
                     ..
                 } => {
                     p_rect_b.angle = p_rect_b.angle + 3.141592653589792328 / 6.0;
+                }
+
+                // Key SPACE
+                Event::KeyDown {
+                    repeat: false,
+                    keycode: Some(Keycode::Space),
+                    ..
+                } => {
+                    p_rect.velocity = [0.0, 0.0];
+                    p_rect.angular_velocity = 0.0;
+                    p_rect_b.velocity = [0.0, 0.0];
+                    p_rect_b.angular_velocity = 0.0;
                 }
 
                 // Exit
@@ -806,6 +834,8 @@ fn main() -> Result<(), String> {
                 col_rect.pos = [(points[0][0] * 100.0) as i32, (points[0][1] * 100.0) as i32];
                 col_rect_b.pos = [(points[1][0] * 100.0) as i32, (points[1][1] * 100.0) as i32];
                 //println!("error: {}", error);
+
+                norm_rect.angle = normals[0][1].atan2(normals[0][0]) + 3.1415926 / 2.0;
             }
             else {
                 rect_b.color = Color::RGBA(0, 255, 0, 255);
@@ -823,8 +853,11 @@ fn main() -> Result<(), String> {
         
         rect.render(&mut canvas);
         rect_b.render(&mut canvas);
+
         col_rect.render(&mut canvas);
         col_rect_b.render(&mut canvas);
+
+        norm_rect.render(&mut canvas);
 
         canvas.present();
 
