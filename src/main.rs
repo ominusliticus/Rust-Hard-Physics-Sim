@@ -63,6 +63,13 @@ struct Impulse {
 }
 
 impl Impulse {
+    pub fn new() -> Impulse {
+        return Impulse {
+            linear: [0.0, 0.0],
+            angular: 0.0,
+        }
+    }
+
     pub fn add(&mut self, impulse: Impulse) -> &Impulse {
         self.linear = vec2_add(self.linear, impulse.linear);
         self.angular = self.angular + impulse.angular;
@@ -501,6 +508,68 @@ fn check_collision(
     return (true, error, contacts, points, normals);
 }
 
+fn apply_double_normal_constraint(
+    pos1: Vector2<f32>,
+    velocity1: Vector2<f32>,
+    angular_velocity1: f32,
+    radius1: Vector2<f32>,
+    center1: Vector2<f32>,
+    inertia1: f32,
+    mass1: f32,
+    pos2: Vector2<f32>,
+    velocity2: Vector2<f32>,
+    angular_velocity2: f32,
+    radius2: Vector2<f32>,
+    center2: Vector2<f32>,
+    inertia2: f32,
+    mass2: f32,
+    normal: Vector2<f32>,
+    error: f32,
+    bias: f32,
+    dt: f32,
+) -> (Impulse, Impulse) {
+    // tangential velocity
+    let r_vec1 = vec2_normalized(vec2_sub(pos1, center1));
+    let tan_vel1 = vec2_len(radius1) * angular_velocity1;
+    let tan_vec1 = [-1.0 * r_vec1[1] * tan_vel1, r_vec1[0] * tan_vel1];
+
+    let r_vec2 = vec2_normalized(vec2_sub(pos2, center2));
+    let tan_vel2 = vec2_len(radius2) * angular_velocity2;
+    let tan_vec2 = [-1.0 * r_vec2[1] * tan_vel2, r_vec2[0] * tan_vel2];
+
+    let calc_vel1 = vec2_add(velocity1, tan_vec1);
+    let calc_vel2 = vec2_add(velocity2, tan_vec2);
+
+    // apply biased contact constraint
+    let c_d1 = vec2_dot(calc_vel1, normal) + bias * (error / dt);
+    let c_d2 = vec2_dot(calc_vel2, normal) + bias * (error / dt);
+
+    //print_vec2(velocity);
+    //print_vec2(tan_vec);
+    //println!("{}", angular_velocity);
+    //println!("{}", tan_cross);
+    //println!("{}", c_d);
+
+    let cross1 = vec2_cross(radius1, normal);
+    let m_eff1 = mass1 + inertia1 * cross1 * cross1;
+
+    let cross2 = vec2_cross(radius2, normal);
+    let m_eff2 = mass2 + inertia2 * cross2 * cross2;
+
+    // next plug in the massive equation you solved for
+
+    let lambda = -m_eff * c_d;
+
+    //println!("{}", m_eff);
+
+    let out = Impulse {
+        linear: vec2_scale(normal, lambda),
+        angular: (lambda * cross),
+    };
+
+    return out;
+}
+
 fn apply_normal_constraint(
     pos: Vector2<f32>,
     velocity: Vector2<f32>,
@@ -512,22 +581,17 @@ fn apply_normal_constraint(
     normal: Vector2<f32>,
     error: f32,
     bias: f32,
+    inertial_impulse: Vector2<f32>,
     dt: f32,
 ) -> Impulse {
     // tangential velocity
     let r_vec = vec2_normalized(vec2_sub(pos, center));
     let tan_vel = vec2_len(radius) * angular_velocity;
-    let tan_vec = [r_vec[1] * tan_vel, -1.0 * r_vec[0] * tan_vel];
-    //let tan_cross = vec2_cross(tan_vec, radius);
+    let tan_vec = [-1.0 * r_vec[1] * tan_vel, r_vec[0] * tan_vel];
 
+    let calc_vel = vec2_add(vec2_add(velocity, tan_vec), vec2_scale(inertial_impulse, 1.0 / mass));
     // apply biased contact constraint
-    let c_d = vec2_dot(vec2_sub(velocity, tan_vec), normal) + bias * (error / dt);
-
-    //print_vec2(velocity);
-    //print_vec2(tan_vec);
-    //println!("{}", angular_velocity);
-    //println!("{}", tan_cross);
-    //println!("{}", c_d);
+    let c_d = vec2_dot(calc_vel, normal) + bias * (error / dt);
 
     let cross = vec2_cross(radius, normal);
     let m_eff = 1.0 / (mass + inertia * cross * cross);
@@ -540,16 +604,6 @@ fn apply_normal_constraint(
         linear: vec2_scale(normal, lambda),
         angular: (lambda * cross),
     };
-
-    if out.linear[1] > 0.0 {
-        //println!("New: -------------- {}", lambda);
-    }
-
-    if out.angular != 0.0 {
-        //println!("Angular Impulse: {}", out.angular);
-    }
-
-    out;
 
     return out;
 }
@@ -594,6 +648,17 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                             //    normal_a = vec2_scale(normal_a, -1.0);
                             //}
 
+                            // calculate the relative inertial impulses of each rect on the point
+                            let r_vec_a = vec2_normalized(vec2_sub(points[c], center_a));
+                            let tan_vel_a = vec2_len(radius_a) * (rects[i].angular_velocity + rects[i].impulse.angular);
+                            let tan_vec_a = [r_vec_a[1] * tan_vel_a, -1.0 * r_vec_a[0] * tan_vel_a];
+                            let inertial_impulse_a = vec2_scale(vec2_add(rects[i].get_impulse_velocity(), tan_vec_a), rects[i].inertia);
+
+                            let r_vec_b = vec2_normalized(vec2_sub(points[c], center_b));
+                            let tan_vel_b = vec2_len(radius_b) * (rects[j].angular_velocity + rects[j].impulse.angular);
+                            let tan_vec_b = [r_vec_b[1] * tan_vel_b, -1.0 * r_vec_b[0] * tan_vel_b];
+                            let inertial_impulse_b = vec2_scale(vec2_add(rects[j].get_impulse_velocity(), tan_vec_b), rects[j].inertia);
+
                             // find impulses
                             let new_impulse_a = apply_normal_constraint(
                                 points[c as usize],
@@ -606,6 +671,8 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 normal_a,
                                 error[c],
                                 bias,
+                                inertial_impulse_b,
+                                //[0.0, 0.0],
                                 dt,
                             );
 
@@ -620,6 +687,8 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
                                 normal_b,
                                 error[c],
                                 bias,
+                                inertial_impulse_a,
+                                //[0.0, 0.0],
                                 dt,
                             );
 
@@ -639,7 +708,7 @@ fn rect_constraint(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f
 
     // apply impulse to velocity
     for i in 0..size {
-        if (vec2_len(rects[i].impulse.linear) > 0.0) {
+        if vec2_len(rects[i].impulse.linear) > 0.0 {
             rects[i].velocity;
         }
         rects[i].velocity = rects[i].get_impulse_velocity();
@@ -703,6 +772,7 @@ fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
                         normals[s],
                         0.0,
                         0.0,
+                        [0.0, 0.0],
                         dt,
                     );
 
@@ -725,6 +795,21 @@ fn screen_bound_constraint(rect: &mut PhysicsRect, dt: f32) {
 
     rect.velocity = rect.get_impulse_velocity();
     rect.angular_velocity = rect.get_impulse_angular_velocity();
+}
+
+fn apply_constraints(rects: [&mut PhysicsRect; 2], size: usize, iter: usize, dt: f32) {
+    // rest all base impulses
+    for i in 0..size {
+        screen_bound_constraint(rects[i], dt);
+    }
+
+    rect_constraint(rects, size, iter, dt);
+
+    for i in 0..size {
+        for j in (i + 1)..size {
+            
+        }
+    }
 }
 
 fn render_rect<'a>(
@@ -955,10 +1040,8 @@ fn main() -> Result<(), String> {
             //p_rect_b.velocity[0] = -0.1;
 
             // constrain velocity
-            screen_bound_constraint(&mut p_rect, dt);
-            screen_bound_constraint(&mut p_rect_b, dt);
 
-            rect_constraint([&mut p_rect, &mut p_rect_b], 2, 1, dt);
+            apply_constraints([&mut p_rect, &mut p_rect_b], 2, 100, dt);
 
             // apply motion
             p_rect.pos = vec2_add(p_rect.pos, vec2_scale(p_rect.velocity, dt));
@@ -1001,7 +1084,7 @@ fn main() -> Result<(), String> {
         col_rect.render(&mut canvas);
         col_rect_b.render(&mut canvas);
 
-        norm_rect.render(&mut canvas);
+        //norm_rect.render(&mut canvas);
 
         canvas.present();
 
