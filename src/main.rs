@@ -508,6 +508,7 @@ fn check_collision(
     return (true, error, contacts, points, normals);
 }
 
+/**
 fn apply_double_normal_constraint(
     pos1: Vector2<f32>,
     velocity1: Vector2<f32>,
@@ -569,6 +570,7 @@ fn apply_double_normal_constraint(
 
     return out;
 }
+*/
 
 fn apply_normal_constraint(
     pos: Vector2<f32>,
