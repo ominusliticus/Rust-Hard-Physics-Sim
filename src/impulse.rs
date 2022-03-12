@@ -8,10 +8,13 @@ pub struct Impulse { // A better name here is momentum
     pub angular: f32,
 }
 
+let PI = 3.14159;
+
 impl Impulse {
     pub fn new() -> Impulse {
         return Impulse {
             linear: [0.0, 0.0],
+            // Make sure that all angles are converted to radians
             angular: 0.0,
         }
     }
